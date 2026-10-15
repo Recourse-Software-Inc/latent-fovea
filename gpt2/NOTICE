@@ -1,0 +1,2 @@
+Derived from GPT-2 small (openai-community/gpt2), Copyright (c) 2019 OpenAI, under the Modified MIT License in LICENSE.
+Changed by Latent Fovea (Recourse Software Inc.): weights converted to 16-bit floats and re-split by layer; the token embeddings re-ordered into tiles, with a layout, neighbours and labels computed from them. These are not the original files.

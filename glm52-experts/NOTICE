@@ -1,0 +1,2 @@
+Derived from GLM-5.2 (zai-org/GLM-5.2), Copyright (c) 2026 Zhipu AI, under the MIT License in LICENSE.
+Contains the router rows (mlp.gate.weight) of every MoE layer as 16-bit floats, read from the colibri int4 container, with a layout, neighbours and labels computed by Latent Fovea (Recourse Software Inc.). No expert weights are included.

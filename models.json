@@ -1,0 +1,50 @@
+{
+  "schema": "latent-fovea-models/1",
+  "default": "gpt2",
+  "models": [
+    {
+      "id": "gpt2",
+      "path": "gpt2/",
+      "name": "GPT-2 small (124M)",
+      "author": "OpenAI",
+      "license": "MIT",
+      "params": "124M",
+      "family": "causal-lm",
+      "blurb": "OpenAI's 2019 model, the classic subject of interpretability research.",
+      "forward": true
+    },
+    {
+      "id": "distilgpt2",
+      "path": "distilgpt2/",
+      "name": "DistilGPT2 (82M)",
+      "author": "Hugging Face",
+      "license": "Apache-2.0",
+      "params": "82M",
+      "family": "causal-lm",
+      "blurb": "GPT-2 distilled to half the depth: 6 layers instead of 12, same vocabulary.",
+      "forward": true
+    },
+    {
+      "id": "mdlm",
+      "path": "mdlm/",
+      "name": "MDLM (OpenWebText, 169M)",
+      "author": "Kuleshov Group, Cornell",
+      "license": "Apache-2.0",
+      "params": "169M",
+      "family": "masked-diffusion",
+      "blurb": "From Sahoo et al., 2024, trained on OpenWebText. It uses GPT-2's vocabulary, so the same query can be compared with GPT-2.",
+      "forward": true
+    },
+    {
+      "id": "glm52-experts",
+      "path": "glm52-experts/",
+      "name": "GLM-5.2 experts",
+      "author": "Z.ai",
+      "license": "MIT",
+      "params": "19,200 experts",
+      "family": "experts",
+      "blurb": "The 19,200 routed experts of GLM-5.2 (75 layers \u00d7 256), each placed by its row of the router: the direction in the hidden state that wakes it.",
+      "forward": false
+    }
+  ]
+}

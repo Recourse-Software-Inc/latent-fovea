@@ -1,0 +1,120 @@
+{
+  "n_layer": 6,
+  "n_head": 12,
+  "d_model": 768,
+  "d_mlp": 3072,
+  "n_ctx": 1024,
+  "dtype": "f16",
+  "layer_layout": [
+    [
+      "ln_1.weight",
+      [
+        768
+      ]
+    ],
+    [
+      "ln_1.bias",
+      [
+        768
+      ]
+    ],
+    [
+      "attn.c_attn.weight",
+      [
+        768,
+        2304
+      ]
+    ],
+    [
+      "attn.c_attn.bias",
+      [
+        2304
+      ]
+    ],
+    [
+      "attn.c_proj.weight",
+      [
+        768,
+        768
+      ]
+    ],
+    [
+      "attn.c_proj.bias",
+      [
+        768
+      ]
+    ],
+    [
+      "ln_2.weight",
+      [
+        768
+      ]
+    ],
+    [
+      "ln_2.bias",
+      [
+        768
+      ]
+    ],
+    [
+      "mlp.c_fc.weight",
+      [
+        768,
+        3072
+      ]
+    ],
+    [
+      "mlp.c_fc.bias",
+      [
+        3072
+      ]
+    ],
+    [
+      "mlp.c_proj.weight",
+      [
+        3072,
+        768
+      ]
+    ],
+    [
+      "mlp.c_proj.bias",
+      [
+        768
+      ]
+    ]
+  ],
+  "layer_files": [
+    "layer00.f16",
+    "layer01.f16",
+    "layer02.f16",
+    "layer03.f16",
+    "layer04.f16",
+    "layer05.f16"
+  ],
+  "misc": [
+    [
+      "wpe.weight",
+      [
+        1024,
+        768
+      ]
+    ],
+    [
+      "ln_f.weight",
+      [
+        768
+      ]
+    ],
+    [
+      "ln_f.bias",
+      [
+        768
+      ]
+    ]
+  ],
+  "wte": "../vectors.f16 in tile order; ../ids.u32 maps tile row -> token id",
+  "tokenizer": [
+    "vocab.json",
+    "merges.txt"
+  ]
+}

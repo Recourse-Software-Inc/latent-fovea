@@ -1,0 +1,74 @@
+{
+  "schema": "latent-fovea/1",
+  "id": "distilgpt2",
+  "model": {
+    "name": "DistilGPT2 (82M)",
+    "author": "Hugging Face",
+    "license": "Apache-2.0",
+    "params": "82M",
+    "family": "causal-lm",
+    "blurb": "GPT-2 distilled to half the depth: 6 layers instead of 12, same vocabulary.",
+    "repo": "distilbert/distilgpt2",
+    "source": "https://huggingface.co/distilbert/distilgpt2",
+    "tensor": "transformer.wte.weight",
+    "tensor_label": "token embedding (wte)",
+    "tensor_sha256": "d502923f9730f0fa6644f847162f403dc4e40a403cf4b47853a9d65f248cb776"
+  },
+  "n": 50257,
+  "d": 768,
+  "k": 16,
+  "grid": 16,
+  "cells": 4096,
+  "vector_dtype": "f16",
+  "row_bytes": 1536,
+  "projection": {
+    "method": "umap",
+    "n_neighbors": 30,
+    "min_dist": 0.15,
+    "metric": "cosine",
+    "pre": "pca50",
+    "seed": 7
+  },
+  "bounds": [
+    [
+      -0.38823097944259644,
+      -0.3444564938545227,
+      -0.46953070163726807
+    ],
+    [
+      1.0638662576675415,
+      0.5396053194999695,
+      0.6620451807975769
+    ]
+  ],
+  "categories": [
+    "word",
+    "subword",
+    "number",
+    "punctuation",
+    "whitespace",
+    "other"
+  ],
+  "category_counts": [
+    32064,
+    14829,
+    1692,
+    781,
+    23,
+    868
+  ],
+  "files": [
+    "cat.u8",
+    "cells.u32",
+    "ids.u32",
+    "knn.u32",
+    "knncos.f16",
+    "norms.f32",
+    "points.f32",
+    "tokens.json",
+    "vectors.f16",
+    "meta.json"
+  ],
+  "forward": "model/manifest.json",
+  "built_at": "2026-09-24T02:32:53Z"
+}

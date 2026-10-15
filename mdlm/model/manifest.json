@@ -1,0 +1,93 @@
+{
+  "arch": "mdlm",
+  "n_layer": 12,
+  "n_head": 12,
+  "d_model": 768,
+  "d_mlp": 3072,
+  "n_ctx": 1024,
+  "vocab": 50258,
+  "mask_id": 50257,
+  "mask_row": 23692,
+  "time_conditioning": false,
+  "block_layout": [
+    [
+      "norm1.weight",
+      [
+        768
+      ]
+    ],
+    [
+      "attn_qkv.weight^T",
+      [
+        768,
+        2304
+      ]
+    ],
+    [
+      "attn_out.weight^T",
+      [
+        768,
+        768
+      ]
+    ],
+    [
+      "norm2.weight",
+      [
+        768
+      ]
+    ],
+    [
+      "mlp.0.weight^T",
+      [
+        768,
+        3072
+      ]
+    ],
+    [
+      "mlp.0.bias",
+      [
+        3072
+      ]
+    ],
+    [
+      "mlp.2.weight^T",
+      [
+        3072,
+        768
+      ]
+    ],
+    [
+      "mlp.2.bias",
+      [
+        768
+      ]
+    ]
+  ],
+  "layer_files": [
+    "block00.f16",
+    "block01.f16",
+    "block02.f16",
+    "block03.f16",
+    "block04.f16",
+    "block05.f16",
+    "block06.f16",
+    "block07.f16",
+    "block08.f16",
+    "block09.f16",
+    "block10.f16",
+    "block11.f16"
+  ],
+  "mods": "mods.f32: per block 6*C (shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp), then final 2*C (shift, scale)",
+  "final": "final.f32: norm_final.weight [C] then output bias [V] in tile order",
+  "unembed": "unembed.f16: [V][C] in tile order",
+  "embed": "../vectors.f16 (vocab_embed in tile order)",
+  "tokenizer": [
+    "vocab.json",
+    "merges.txt"
+  ],
+  "sampler": {
+    "kind": "ddpm_cache",
+    "eps": 1e-05,
+    "steps": 64
+  }
+}

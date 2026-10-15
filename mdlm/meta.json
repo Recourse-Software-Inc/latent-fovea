@@ -1,0 +1,75 @@
+{
+  "schema": "latent-fovea/1",
+  "id": "mdlm",
+  "model": {
+    "name": "MDLM (OpenWebText, 169M)",
+    "author": "Kuleshov Group, Cornell",
+    "license": "Apache-2.0",
+    "params": "169M",
+    "family": "masked-diffusion",
+    "blurb": "From Sahoo et al., 2024, trained on OpenWebText. It uses GPT-2's vocabulary, so the same query can be compared with GPT-2.",
+    "repo": "kuleshov-group/mdlm-owt",
+    "source": "https://huggingface.co/kuleshov-group/mdlm-owt",
+    "tensor": "backbone.vocab_embed.embedding",
+    "tensor_label": "input token embedding (vocab_embed)",
+    "tensor_sha256": "fd4623881830ab8216f1e987c0bf90e056e7030667c481e4f4a02554d29248e5"
+  },
+  "n": 50258,
+  "d": 768,
+  "k": 16,
+  "grid": 16,
+  "cells": 4096,
+  "vector_dtype": "f16",
+  "row_bytes": 1536,
+  "projection": {
+    "method": "umap",
+    "n_neighbors": 30,
+    "min_dist": 0.15,
+    "metric": "cosine",
+    "pre": "pca50",
+    "seed": 7
+  },
+  "bounds": [
+    [
+      -1.0735400915145874,
+      -0.9078114032745361,
+      -0.453105092048645
+    ],
+    [
+      0.290435254573822,
+      0.29588931798934937,
+      0.31287682056427
+    ]
+  ],
+  "categories": [
+    "word",
+    "subword",
+    "number",
+    "punctuation",
+    "whitespace",
+    "other"
+  ],
+  "category_counts": [
+    32064,
+    14829,
+    1692,
+    781,
+    23,
+    869
+  ],
+  "files": [
+    "cat.u8",
+    "cells.u32",
+    "ids.u32",
+    "knn.u32",
+    "knncos.f16",
+    "norms.f32",
+    "points.f32",
+    "tokens.json",
+    "vectors.f16",
+    "meta.json"
+  ],
+  "forward": "model/manifest.json",
+  "forward_bytes": 326322461,
+  "built_at": "2026-09-24T03:04:02Z"
+}

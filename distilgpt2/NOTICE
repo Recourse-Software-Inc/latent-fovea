@@ -1,0 +1,2 @@
+Derived from DistilGPT2 (distilbert/distilgpt2) by Hugging Face, under the Apache License 2.0 in LICENSE.
+Changed by Latent Fovea (Recourse Software Inc.): weights converted to 16-bit floats and re-split by layer; the token embeddings re-ordered into tiles, with a layout, neighbours and labels computed from them. These are not the original files.

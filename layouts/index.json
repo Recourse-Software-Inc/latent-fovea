@@ -1,0 +1,197 @@
+{
+  "distilbert/distilgpt2": {
+    "file": "hf--distilbert--distilgpt2.umap.f32",
+    "n": 50257,
+    "arch": "gpt2",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T22:51:10Z",
+    "seconds": 107
+  },
+  "HuggingFaceTB/SmolLM2-360M": {
+    "file": "hf--HuggingFaceTB--SmolLM2-360M.umap.f32",
+    "n": 49152,
+    "arch": "llama",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T22:52:10Z",
+    "seconds": 60
+  },
+  "HuggingFaceTB/SmolLM2-135M-Instruct": {
+    "file": "hf--HuggingFaceTB--SmolLM2-135M-Instruct.umap.f32",
+    "n": 49152,
+    "arch": "llama",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T22:53:10Z",
+    "seconds": 59
+  },
+  "Qwen/Qwen2.5-0.5B-Instruct": {
+    "file": "hf--Qwen--Qwen2.5-0.5B-Instruct.umap.f32",
+    "n": 151936,
+    "arch": "qwen2",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T22:56:58Z",
+    "seconds": 229
+  },
+  "EleutherAI/pythia-410m": {
+    "file": "hf--EleutherAI--pythia-410m.umap.f32",
+    "n": 50304,
+    "arch": "gpt_neox",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T22:57:46Z",
+    "seconds": 48
+  },
+  "EleutherAI/pythia-70m": {
+    "file": "hf--EleutherAI--pythia-70m.umap.f32",
+    "n": 50304,
+    "arch": "gpt_neox",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T22:58:32Z",
+    "seconds": 46
+  },
+  "openai-community/gpt2": {
+    "file": "hf--openai-community--gpt2.umap.f32",
+    "n": 50257,
+    "arch": "gpt2",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T22:59:21Z",
+    "seconds": 50
+  },
+  "openai-community/gpt2-medium": {
+    "file": "hf--openai-community--gpt2-medium.umap.f32",
+    "n": 50257,
+    "arch": "gpt2",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T23:00:14Z",
+    "seconds": 52
+  },
+  "HuggingFaceTB/SmolLM2-135M": {
+    "file": "hf--HuggingFaceTB--SmolLM2-135M.umap.f32",
+    "n": 49152,
+    "arch": "llama",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T23:01:04Z",
+    "seconds": 50
+  },
+  "EleutherAI/pythia-160m": {
+    "file": "hf--EleutherAI--pythia-160m.umap.f32",
+    "n": 50304,
+    "arch": "gpt_neox",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T23:31:55Z",
+    "seconds": 109
+  },
+  "Qwen/Qwen2.5-0.5B": {
+    "file": "hf--Qwen--Qwen2.5-0.5B.umap.f32",
+    "n": 151936,
+    "arch": "qwen2",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T23:35:34Z",
+    "seconds": 219
+  },
+  "Qwen/Qwen3-0.6B": {
+    "file": "hf--Qwen--Qwen3-0.6B.umap.f32",
+    "n": 151936,
+    "arch": "qwen3",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T23:39:06Z",
+    "seconds": 212
+  },
+  "Qwen/Qwen2.5-1.5B": {
+    "file": "hf--Qwen--Qwen2.5-1.5B.umap.f32",
+    "n": 151936,
+    "arch": "qwen2",
+    "projection": {
+      "method": "umap",
+      "n_neighbors": 30,
+      "min_dist": 0.15,
+      "metric": "cosine",
+      "pre": "pca50",
+      "seed": 7
+    },
+    "built_at": "2026-09-28T23:42:36Z",
+    "seconds": 210
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "schema": "latent-fovea/1",
+  "id": "glm52-experts",
+  "kind": "experts",
+  "model": {
+    "name": "GLM-5.2 experts",
+    "author": "Z.ai",
+    "license": "MIT",
+    "family": "experts",
+    "params": "19,200 experts",
+    "blurb": "The 19,200 routed experts of GLM-5.2 (75 layers \u00d7 256), each placed by its row of the router: the direction in the hidden state that wakes it."
+  },
+  "n": 19200,
+  "d": 6144,
+  "k": 16,
+  "grid": 16,
+  "cells": 4096,
+  "vector_dtype": "f16",
+  "row_bytes": 12288,
+  "projection": {
+    "method": "umap",
+    "n_neighbors": 30,
+    "min_dist": 0.15,
+    "metric": "cosine",
+    "pre": "pca50",
+    "seed": 7
+  },
+  "bounds": [
+    [
+      -0.6816245913505554,
+      -0.5502811670303345,
+      -0.835853099822998
+    ],
+    [
+      0.6816245913505554,
+      0.5502811670303345,
+      0.835853099822998
+    ]
+  ],
+  "categories": [
+    "layers 3\u201315",
+    "layers 16\u201328",
+    "layers 29\u201341",
+    "layers 42\u201354",
+    "layers 55\u201367",
+    "layers 68\u201377"
+  ],
+  "category_counts": [
+    3328,
+    3328,
+    3328,
+    3328,
+    3328,
+    2560
+  ],
+  "vector_parts": [
+    {
+      "file": "vectors.00.f16",
+      "bytes": 23998464
+    },
+    {
+      "file": "vectors.01.f16",
+      "bytes": 23998464
+    },
+    {
+      "file": "vectors.02.f16",
+      "bytes": 23998464
+    },
+    {
+      "file": "vectors.03.f16",
+      "bytes": 23998464
+    },
+    {
+      "file": "vectors.04.f16",
+      "bytes": 23998464
+    },
+    {
+      "file": "vectors.05.f16",
+      "bytes": 23998464
+    },
+    {
+      "file": "vectors.06.f16",
+      "bytes": 23998464
+    },
+    {
+      "file": "vectors.07.f16",
+      "bytes": 23998464
+    },
+    {
+      "file": "vectors.08.f16",
+      "bytes": 23998464
+    },
+    {
+      "file": "vectors.09.f16",
+      "bytes": 19943424
+    }
+  ],
+  "built_at": "2026-10-04T23:31:57Z"
+}
