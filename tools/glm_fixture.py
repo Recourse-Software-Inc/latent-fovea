@@ -4,7 +4,7 @@
 """A random GLM-5.2-shaped model in colibri's container format, at the REAL dimensions (hidden
 6144, 64 heads, MLA 2048/512, rope 64, experts 2048 wide, vocab 154,880) but only a few layers and
 experts, so web/glm/glm-gpu.js can be checked at full size (row chunking, 154,880-row dispatches,
-binding limits) without the 429 GB model. tools/glm_ref.py then computes its reference.
+binding limits) without the real model (429 GB). tools/glm_ref.py then computes its reference.
 
     python tools/glm_fixture.py --config <GLM-5.2 config.json> --out <dir> [--layers 2 --dense 1 --experts 16]
 

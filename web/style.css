@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
    Copyright 2026 Recourse Software Inc. */
-/* Chrome follows KD QViz: #08080e ground, brand purple, cyan accent,
+/* Visual style: #08080e ground, brand purple, cyan accent,
    Plus Jakarta Sans display, JetBrains Mono uppercase pills and key chips. */
 :root {
   color-scheme: dark;
@@ -155,7 +155,7 @@ button:hover, select:hover, input:hover { border-color: var(--lift); }
 .fwd.dragging { transition: none; user-select: none; }
 .fwd.collapsed { transform: translateY(calc(100% + 24px)); opacity: 0; pointer-events: none; }
 .fwd-top { display: flex; align-items: center; gap: 12px; padding: 12px 12px 8px; border-bottom: 1px solid var(--line); }
-/* chrono/QViz-style chrome: a grab pill on the top edge, a chevron key chip, a tab when hidden */
+/* Panel chrome: a grab pill on the top edge, a chevron key chip, a tab when hidden */
 .fwd-grip { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 88px; height: 12px; cursor: ns-resize; display: grid; place-items: center; touch-action: none; z-index: 1; }
 .fwd-grip span { width: 38px; height: 4px; border-radius: 999px; background: var(--line-strong); transition: background .15s, width .15s; }
 .fwd-grip:hover span, .fwd-grip:focus-visible span, .fwd.dragging .fwd-grip span { background: var(--lift); width: 52px; }

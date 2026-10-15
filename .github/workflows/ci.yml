@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Recourse Software Inc.
+# Checks every push and pull request: JavaScript, Python and shell parse; every source file
+# carries the licence header; the dev server starts and serves the pages with their headers.
+name: ci
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: JavaScript parses
+        run: for f in $(git ls-files '*.js' '*.mjs'); do node --check "$f"; done
+      - name: Python compiles
+        run: python -m py_compile $(git ls-files '*.py')
+      - name: Shell scripts parse
+        run: for f in $(git ls-files '*.sh'); do bash -n "$f"; done
+      - name: Licence headers
+        run: |
+          missing=$(git ls-files '*.js' '*.mjs' '*.c' '*.h' '*.py' '*.sh' '*.html' '*.css' '*.yml' | xargs grep -L 'SPDX-License-Identifier: Apache-2.0' || true)
+          if [ -n "$missing" ]; then echo "Missing the SPDX header:"; echo "$missing"; exit 1; fi
+      - name: Dev server serves the pages
+        run: |
+          python tools/serve.py --port 8099 & sleep 2
+          for p in / real.html glm.html app.js lf.wasm; do curl -fsS -o /dev/null "http://127.0.0.1:8099/$p"; done
+          curl -fsSI http://127.0.0.1:8099/ | grep -i '^content-security-policy:'
+          curl -fsS -H 'Range: bytes=0-15' -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8099/lf.wasm | grep -x 206

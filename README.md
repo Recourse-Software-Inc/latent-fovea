@@ -4,6 +4,12 @@ Fly through the **real latent space of an open-weights model** in the browser. F
 
 Built by [KnowDrive.ai](https://knowdrive.ai) (Recourse Software Inc.). Open source under the [Apache License 2.0](LICENSE); see [NOTICE](NOTICE) for attribution. Live demo: [latent.knowdrive.ai](https://latent.knowdrive.ai).
 
+**Requirements:** a desktop browser with WebGL2 and WebAssembly SIMD (current Chrome, Edge, Firefox or Safari). WebGPU (Chrome or Edge 113+, Safari 26) runs Hugging Face models faster; GLM-5.2 needs WebGPU plus a folder picker (Chrome or Edge) and its ~419 GB container on a local SSD. Building data needs Python 3.11+; the checks need Node 22+.
+
+**Status:** an experimental research tool, 0.1.0. Not built for phones. Known limits: SentencePiece tokenizers (Llama 2, TinyLlama) aren't supported, GLM-5.2's context stops at 2,048 tokens, and UMAP layouts for Hugging Face models are computed in the browser unless prebuilt.
+
+**Contents:** [Models](#models) · [What you see](#what-you-see) · [Any model from Hugging Face](#any-model-from-hugging-face) · [Forward pass](#forward-pass-watching-gpt-2-think-slowed-down) · [Diffusion](#diffusion-watching-mdlm-fill-in-the-answer) · [GPU](#running-on-the-gpu) · [Streaming](#how-the-streaming-works) · [Run it](#run-it) · [Build the data](#build-the-data-yourself) · [Files](#files) · [Credits](#credits)
+
 VR headsets render the few degrees under your gaze at full resolution and the rest coarsely. Some also stream at full bitrate only where you look. Latent Fovea applies both ideas to a model's internals. The vectors under your gaze are streamed in, re-projected and searched in WebAssembly. Everything else is drawn from a small precomputed atlas.
 
 **Is it real?** [`web/real.html`](web/real.html) (linked from the header and under every answer) explains what on screen is the model's raw data, what is derived from it (UMAP, logit lens, local PCA) and what is illustration (the thought path, averaged arcs, colours).
@@ -17,10 +23,9 @@ Pick the model from the **Model** menu at the top left. The choice is kept in th
 | **GPT-2 small**, OpenAI | 124M | MIT | The classic interpretability subject. 12 layers. |
 | **DistilGPT2**, Hugging Face | 82M | Apache-2.0 | GPT-2 distilled to 6 layers with the same vocabulary. Compare how shallower "thinking" looks on the same query. |
 | **MDLM** (OpenWebText), Kuleshov Group, Cornell | 169M | Apache-2.0 | A **masked diffusion** language model. It doesn't write left to right: the whole answer starts as `[MASK]` and words lock in over denoising steps, in any order. |
+| **Canada 2025/26 Public Data**, a KnowDrive store | 391,922 atoms | Canadian public records | Not a language model: a **retrieval store**, read as one attention layer without a decoder. See below. On the live demo; not in the prebuilt data. |
 
-| **Canada 2025/26 Public Data**, a KnowDrive store | 391,922 atoms | Canadian public records | Not a language model: a **retrieval store**, read as one attention layer without a decoder. See below. |
-
-Every model shows its token-embedding matrix `wte` (50,257 tokens × 768 dimensions, the model's first latent space) and runs live in the forward-pass view. `tools/build_data.py` lists the models (`MODELS`), and `data/models.json` is the registry the picker reads. The **build-data** workflow takes a comma-separated list of models to build.
+Every language model shows its token-embedding matrix (for GPT-2, `wte`: 50,257 tokens × 768 dimensions, the model's first latent space) and runs live in the forward-pass view. `tools/build_data.py` lists the models (`MODELS`), and `web/data/models.json` is the registry the picker reads. The **build-data** workflow takes a comma-separated list of models to build.
 
 ### GLM-5.2 (744B), streamed from an SSD
 
@@ -40,7 +45,7 @@ Checked against transformers on the same dequantized weights (`tools/glm_ref.py`
 
 ### A KnowDrive store: attention without a decoder
 
-A retrieval store scores a question against a fixed set of keys, masks some out, and reads from the best: what one attention head does, with no weights and nothing generated. **Canada 2025/26 Public Data** is a public KnowDrive store of Canadian government records: 391,922 atoms (passages) from 12,090 files on lobbying, spending, registries, elections, proceedings, legislation and tariffs, each a 1,024-number Jina-CLIP-v2 vector. The atoms are the cloud, coloured by domain and labelled by their three most distinctive words; the inspector shows the passage, its file and tags; neighbours are exact. **Ask the store** picks an example question: arcs to the page each head returns (Vector, Full-text, Hybrid), the recall shape, the tags the page carries, and **Distances from the question**, every atom at its exact cosine distance with a ring at the page's edge. Click a legend domain to mask it: masked atoms fade in place and the vector page is re-ranked over what is left. The vector head is recomputed in the browser from a query vector recovered from KnowDB's own scores (it reproduces all 1,500 of them to 2×10⁻⁷, and the browser's top 50 matches KnowDB's in order for all ten example questions); full-text and hybrid are KnowDB's lists, replayed. Handbook, Chapter 18.
+A retrieval store scores a question against a fixed set of keys, masks some out, and reads from the best: what one attention head does, with no weights and nothing generated. **Canada 2025/26 Public Data** is a public KnowDrive store of Canadian government records: 391,922 atoms (passages) from 12,090 files on lobbying, spending, registries, elections, proceedings, legislation and tariffs, each a 1,024-number Jina-CLIP-v2 vector. The atoms are the cloud, coloured by domain and labelled by their three most distinctive words; the inspector shows the passage, its file and tags; neighbours are exact. **Ask the store** picks an example question: arcs to the page each head returns (Vector, Full-text, Hybrid), the recall shape, the tags the page carries, and **Distances from the question**, every atom at its exact cosine distance with a ring at the page's edge. Click a legend domain to mask it: masked atoms fade in place and the vector page is re-ranked over what is left. The vector head is recomputed in the browser from a query vector recovered from KnowDB's own scores (it reproduces all 1,500 of them to 2×10⁻⁷, and the browser's top 50 matches KnowDB's in order for all ten example questions); full-text and hybrid are KnowDB's lists, replayed. Handbook, Chapter 18. (KnowDB is KnowDrive's retrieval engine. This data set is on the live demo but not in the prebuilt data.)
 
 ## What you see
 
@@ -95,7 +100,7 @@ Tokenizers are read from `tokenizer.json`: byte-level BPE, including Llama 3 and
 
 **Checked against `transformers`.** `tools/check_hf.mjs` builds a model in headless Chromium and runs a prompt through the site's own worker. `tools/ref_hf.py` then compares the result with PyTorch on the same weights: token ids, the residual norm after every block, attention, and the top-10 next tokens.
 
-| Model | Worst residual diff | Worst top-10 prob diff | ms/token (here) |
+| Model | Worst residual diff | Worst top-10 prob diff | ms/token (Apple M-series, CPU) |
 |---|---|---|---|
 | GPT-2 small | 1.3e-4 | 1e-4 | 79 |
 | GPT-2 medium | 1.1e-4 | 1.3e-3 | 243 |
@@ -152,7 +157,7 @@ Click any token chip to scrub back to it. Every capture is kept.
 
 **Just watch the cloud.** Press `P`, or the chevron at the panel's top right, to hide the field panel. The run keeps playing, the answer keeps streaming at the top, and the scene re-centres. The **Field** tab at the bottom (or `P` again) brings the panel back. Drag the grip on its top edge to resize it (arrow keys work when the grip has focus). The height and whether it is hidden are remembered.
 
-Cost: about 250 MB of fp16 weights, loaded once when you open the view. The kernel decodes them to f32, so it uses about 575 MB of memory. Each token takes about 110 ms in Node on this dev box, including 13 logit-lens readouts over the full 50,257-token vocabulary. For GPT-2, generation is greedy by default, and "Sample" draws from the top 10 at temperature 0.8. For MDLM, "Sample" (the default) draws from the full distribution, as the paper does. The context window is 256 tokens.
+Cost: about 250 MB of fp16 weights, loaded once when you open the view. The kernel decodes them to f32, so it uses about 575 MB of memory. Each token takes about 110 ms in Node on an Apple M-series laptop, including 13 logit-lens readouts over the full 50,257-token vocabulary. For GPT-2, generation is greedy by default, and "Sample" draws from the top 10 at temperature 0.8. For MDLM, "Sample" (the default) draws from the full distribution, as the paper does. The context window is 256 tokens.
 
 ## Diffusion: watching MDLM fill in the answer
 
@@ -194,9 +199,12 @@ The GPT-2 data set is 77 MB of vectors. The cache holds decoded f32 rows, so the
 ## Run it
 
 ```bash
-tools/get_data.sh          # fetch the prebuilt data set from the `data` branch
+git clone https://github.com/Recourse-Software-Inc/latent-fovea && cd latent-fovea
+tools/get_data.sh          # the prebuilt data sets (~970 MB) from the `data` branch
 python3 tools/serve.py     # http://127.0.0.1:8080/  (static server with Range support)
 ```
+
+The prebuilt data holds GPT-2, DistilGPT2 and MDLM (with weights for the forward pass), the GLM-5.2 expert cloud and layouts for Hugging Face models; each folder carries its model's licence. With no data at all, the viewer can still build any supported model from Hugging Face in the browser: open `http://127.0.0.1:8080/#hf:openai-community/gpt2`. The models it fetches are public and need no Hugging Face token.
 
 Any static host that honours `Range` works, including GitHub Pages. Without Range support the viewer falls back to one full download and says so in the HUD. Point it at another data set with `?data=path/`.
 
@@ -216,13 +224,13 @@ Without them the job skips with a warning. With them, the first run creates the 
 ## Build the data yourself
 
 ```bash
-pip install numpy umap-learn
-python3 tools/build_data.py --model gpt2 --out web/data/gpt2     # ~3 min, 83 MB out
+pip install -r requirements.txt
+python3 tools/build_data.py --model gpt2 --out web/data/gpt2 --weights    # ~3 min; downloads 548 MB, writes ~260 MB
 ```
 
-Add `--weights` to also export the full model for the forward pass: 12 fp16 layer files of 14 MB each, `wpe`/`ln_f`, and the tokenizer. The forward pass reuses the tile-ordered `vectors.f16` as its embedding and unembedding matrix. Without `--weights`, only the `wte` tensor is downloaded. The script reads the safetensors header, then makes one Range request for that tensor's 154 MB. The **build-data** GitHub Action runs the same script and publishes the result to the `data` branch.
+Each build also rewrites `web/data/models.json`, the registry the model picker reads (`--registry web/data` rewrites only that). `--weights` exports the full model for the forward pass: 12 fp16 layer files of 14 MB each, `wpe`/`ln_f`, and the tokenizer; without it, only the embeddings view works. The forward pass reuses the tile-ordered `vectors.f16` as its embedding and unembedding matrix. Without `--weights`, only the `wte` tensor is downloaded (154 MB). The script reads the safetensors header, then makes one Range request for that tensor's 154 MB. The **build-data** GitHub Action runs the same script and publishes the result to the `data` branch.
 
-A KnowDrive store is built from the store itself, with a read token for it in a file (never committed):
+A KnowDrive store is built from the store itself. This needs a KnowDrive account and a read token for the store, in `~/.cache/latent-fovea/token` or `$KNOWDRIVE_TOKEN` (never committed):
 
 ```bash
 node tools/fetch_kdstore.mjs --store vs_… --out ~/.cache/latent-fovea/kdstore-canada     # every atom with its vector; resumable
@@ -236,38 +244,54 @@ python3 tools/kd_queries.py --data web/data/canada --cache ~/.cache/latent-fovea
 kernel/build.sh    # clang --target=wasm32, SIMD + baseline builds, no libc, no imports
 ```
 
-Both `.wasm` files are committed, so running the viewer needs no toolchain. It needs a clang with the WebAssembly target and `wasm-ld`; Apple's clang has neither. On macOS, Homebrew's `llvm@21` and `lld@21` work: `PATH="$(brew --prefix llvm@21)/bin:$(brew --prefix lld@21)/bin:$PATH" kernel/build.sh`.
+The `.wasm` builds (five kernels, each with a SIMD and a baseline build) are committed, so running the viewer needs no toolchain. It needs a clang with the WebAssembly target and `wasm-ld`; Apple's clang has neither. On macOS, Homebrew's `llvm@21` and `lld@21` work: `PATH="$(brew --prefix llvm@21)/bin:$(brew --prefix lld@21)/bin:$PATH" kernel/build.sh`.
 
 ## Files
 
-- `kernel/lf.c`: the WebAssembly kernel (projection and tiers, tile scheduling, slot cache, fp16 decode, local PCA, kNN).
-- `kernel/mdlm.c` + `web/mdlm.js` + `web/diffusion.js`: MDLM forward pass, loader, and the diffusion view. `tools/check_mdlm.mjs` + `tools/ref_mdlm.py` compare it against numpy.
-- `kernel/gpt2.c`: GPT-2 small forward pass with a KV cache. It records attention, head write strength, MLP activations, residuals and the logit lens at every depth.
-- `web/`: the viewer: `index.html`, `style.css`, `app.js` (WebGL2, camera, streaming, overlay, inspector), `field.js` (forward-pass view: field, lens river, attention flow, hidden-state space), `hidden.js` (the hidden states' 3-D projection), `forward.js` + `forward-worker.js` (model loading and worker), `bpe.js` (GPT-2 tokenizer).
-- `tools/check_forward.mjs` + `tools/ref_gpt2.py`: run the WebAssembly model and an independent numpy implementation on the same prompt, to compare their outputs.
-- `tools/build_data.py`: builds the model data set: atlas, exact kNN, tiles, `meta.json` with source and licence.
-- `tools/fetch_kdstore.mjs`, `tools/build_kdstore.py`, `tools/kd_queries.py` + `web/kdquery.js`: a KnowDrive store as a data set (atoms, exact kNN, labels, files and tags), its example questions (query vectors recovered from KnowDB's scores), and the store's panel, inspector and mask in the viewer.
-- `web/glm.html`, `web/glm/` (container reader, WebGPU engine, worker), `tools/glm_ref.py`, `tools/glm_fixture.py`: GLM-5.2 streamed from an SSD, and its reference and test models.
-- `tools/serve.py`: dev server with Range support. `tools/get_data.sh`: fetches prebuilt data.
+**Kernels** (`kernel/`, C compiled to WebAssembly by `kernel/build.sh`, no libc):
+- `lf.c`: projection and tiers, tile scheduling, slot cache, fp16 decode, local PCA, kNN.
+- `gpt2.c`: GPT-2 small with a KV cache, recording attention, head write strength, MLP activations, residuals and the logit lens at every depth.
+- `mdlm.c`: the MDLM forward pass.
+- `dec.c`: a general decoder-only transformer for the families loaded from Hugging Face.
+- `umap.c`: UMAP in the browser.
+
+**Viewer** (`web/`):
+- `index.html`, `style.css`, `app.js`: the viewer (WebGL2, camera, streaming, overlay, inspector).
+- `field.js` (the forward-pass view: field, lens river, attention flow), `hidden.js` (hidden states in 3-D), `diffusion.js` (MDLM), `sae.js` (sparse-autoencoder features).
+- `forward.js` + `forward-worker.js` (built-in models), `mdlm.js`, `decoder.js` and `gpu-decoder.js` (the general decoder on the CPU and on WebGPU), `bpe.js` (the GPT-2 tokenizer).
+- `hub.js`, `hubui.js`, `build-worker.js`, `store.js`, `write-worker.js`: the Hugging Face picker, building a model in the browser and keeping it in the browser's storage.
+- `knn-worker.js`, `layout-worker.js`, `umap.js`: neighbours and layouts for models built in the browser.
+- `kdquery.js`: a KnowDrive store's panel, questions and mask. `expertview.js`: the GLM-5.2 expert cloud.
+- `glm.html`, `glm-page.js`, `glm/` (container reader, WebGPU engine, worker): GLM-5.2 streamed from an SSD. `glm-test.html`: its check against a reference (local only).
+- `real.html` + `real.js`: the handbook ("Is it real?").
+
+**Tools** (`tools/`):
+- `serve.py`: dev server with Range support and the site's security headers. `get_data.sh`: fetches the prebuilt data. `stage_static.py`: stages the site for a static host.
+- `build_data.py` (built-in models, with `meta.json` recording source and licence), `build_layouts.py` (precomputed layouts), `build_experts.py` (the GLM-5.2 expert cloud).
+- `fetch_kdstore.mjs`, `build_kdstore.py`, `kd_queries.py`: a KnowDrive store as a data set (needs a KnowDrive read token).
+- Checks against independent references: `check_forward.mjs` + `ref_gpt2.py`, `check_mdlm.mjs` + `ref_mdlm.py`, `check_hf.mjs` + `ref_hf.py`, `check_umap.mjs`, and `glm_ref.py`, `glm_ref_stream.py`, `glm_fixture.py` for GLM-5.2.
 
 ## Roadmap
 
-1. **v0**: GPT-2's token embeddings, foveated and streamed. Done.
-2. **v1**: GPT-2 thinking, slowed down: the forward pass, the attention field, the logit-lens thought path. Done. Model picker with DistilGPT2. Done.
-3. **MDLM**, a masked-diffusion LM that fills in the whole answer at once. Done.
-4. **Next model families**: a decision model like Jev (a GLiClass / ModernBERT encoder that returns a calibrated choice instead of text). A tiny image-diffusion model, where the fovea decodes image regions.
+Done in 0.1.0: GPT-2's token embeddings foveated and streamed; GPT-2 thinking, slowed down (forward pass, attention field, logit lens); DistilGPT2 and MDLM; Hugging Face models on the CPU and WebGPU; a KnowDrive store as attention; GLM-5.2 streamed from an SSD.
 
+Next:
+1. **An encoder classifier** (e.g. GLiClass / ModernBERT) that returns a calibrated choice instead of text.
+2. **A tiny image-diffusion model**, where the fovea decodes image regions.
+3. **SentencePiece tokenizers**, for Llama 2-family models.
 
 ## Credits
 
 Latent Fovea is designed and built by KnowDrive.ai, Recourse Software Inc. Copyright 2026 Recourse Software Inc., licensed under the Apache License 2.0. Third-party work it builds on (full notices in [NOTICE](NOTICE)):
 
-- **colibri** by Vincenzo Fornaro ([JustVugg/colibri](https://github.com/JustVugg/colibri), Apache-2.0): the technique of keeping a mixture-of-experts model's dense part on the GPU and streaming routed experts from disk, and the int4 container format that `web/glm/` and `tools/glm_*` read. The code here is an independent WebGPU implementation.
+- **colibrì** by Vincenzo Fornaro ([JustVugg/colibri](https://github.com/JustVugg/colibri), Apache-2.0): the technique of keeping a mixture-of-experts model's dense part on the GPU and streaming routed experts from disk, and the int4 container format that `web/glm/` and `tools/glm_*` read. The code here is an independent WebGPU implementation.
 - **GLM-5.2** by Z.ai, released under the MIT licence.
-- **GPT-2 byte-pair encoding** (`web/bpe.js`) follows OpenAI's GPT-2 encoder (MIT).
-- **UMAP** (McInnes, Healy and Melville; [umap-learn](https://github.com/lmcinnes/umap), BSD-3-Clause) builds the layouts in `tools/`.
+- **GPT-2 byte-pair encoding**: `web/bpe.js` contains portions translated from OpenAI's GPT-2 encoder (Modified MIT licence, reproduced in NOTICE).
+- **UMAP** (McInnes, Healy and Melville; [umap-learn](https://github.com/lmcinnes/umap), BSD-3-Clause) builds the layouts in `tools/`; `kernel/umap.c` is an independent implementation for the browser.
 - **GPT-2 sparse autoencoders** by Joseph Bloom (MIT), with feature descriptions from [Neuronpedia](https://www.neuronpedia.org).
 - **Jina-CLIP-v2** by Jina AI (CC BY-NC 4.0) produced the KnowDrive store's vectors; the data set holds those vectors, not the model.
 - **Fonts**: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License), served by Google Fonts.
 
-GPT-2 weights © OpenAI, released under the MIT licence ([model card](https://huggingface.co/openai-community/gpt2)). DistilGPT2 by Hugging Face, released under Apache-2.0 ([model card](https://huggingface.co/distilbert/distilgpt2)). MDLM by Sahoo et al., Kuleshov Group, Cornell, released under Apache-2.0 ([code](https://github.com/kuleshov-group/mdlm), [weights](https://huggingface.co/kuleshov-group/mdlm-owt)). The data set records the exact tensor and its SHA-256 in `meta.json`.
+GPT-2 weights © OpenAI, released under the MIT licence ([model card](https://huggingface.co/openai-community/gpt2)). DistilGPT2 by Hugging Face, released under Apache-2.0 ([model card](https://huggingface.co/distilbert/distilgpt2)). MDLM by Sahoo et al., Kuleshov Group, Cornell, released under Apache-2.0 ([code](https://github.com/kuleshov-group/mdlm), [weights](https://huggingface.co/kuleshov-group/mdlm-owt)). The data set records the exact tensor and its SHA-256 in `meta.json`; each folder of the prebuilt data carries its model's licence.
+
+**Trademarks.** KnowDrive, KnowDrive.ai, KnowDB and the KnowDrive logo (`web/kd-logo.jpg`) are trademarks of Recourse Software Inc. The Apache License does not grant permission to use them (section 6): forks should replace the logo and must not suggest endorsement.

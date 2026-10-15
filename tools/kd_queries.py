@@ -4,7 +4,7 @@
 """Example queries for a KnowDrive data set built by tools/build_kdstore.py: KnowDB's own answers,
 and each query's vector, recovered exactly from those answers.
 
-    ~/.cache/latent-fovea/venv/bin/python tools/kd_queries.py --data web/data/canada \\
+    python3 tools/kd_queries.py --data web/data/canada \\
         --cache ~/.cache/latent-fovea/kdstore-canada --store vs_… --token-file ~/.cache/latent-fovea/token
 
 KnowDrive's search does not return the query's embedding, and a browser cannot run Jina-CLIP-v2.

@@ -5,7 +5,7 @@
 store's atoms as a cloud, in the same layout as a model's vocabulary (see tools/build_data.py), so
 the Embeddings view, the fovea, the inspector, layouts and neighbours all work on it unchanged.
 
-    ~/.cache/latent-fovea/venv/bin/python tools/build_kdstore.py \\
+    python3 tools/build_kdstore.py \\
         --cache ~/.cache/latent-fovea/kdstore-canada --out web/data/canada --name "Canada 2025/26 Public Data"
 
 Atoms are the store's keys (KnowDrive reads retrieval as attention: score a query against frozen

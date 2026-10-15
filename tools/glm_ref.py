@@ -13,8 +13,7 @@ format JustVugg/colibri streams from disk), runs it two ways, and checks they ag
 It writes ref.json (prompt, teacher-forced argmax, greedy continuation, the experts chosen per layer
 per position) and ref_hidden.f32 (the residual after every layer, per position) for the browser test.
 
-    python tools/glm_ref.py --model ~/.cache/latent-fovea/glm_oracle/fp8/glm_tiny_i4 \\
-        --prompt-from ~/.cache/latent-fovea/glm_oracle/fp8/ref_glm.json --out <dir>
+    python3 tools/glm_ref.py --model <container dir> --out <dir> [--prompt-from <ref json>]
 
 Container format (colibri c/tools/convert_fp8_to_int4.py): safetensors shards, no index. A
 quantized weight is `name` (U8, flat) + `name.qs` (F32): int4 grouped (group 64, symmetric,
@@ -181,11 +180,17 @@ def hf_reference(g, d, full_ids):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True); ap.add_argument("--prompt-from", required=True)
+    ap.add_argument("--model", required=True); ap.add_argument("--prompt-from", help="JSON with prompt_ids and full_ids (e.g. colibrì's oracle); default: the model folder's prompt.json, else 32 fixed random tokens")
     ap.add_argument("--out", required=True); ap.add_argument("--gen", type=int, default=16)
     a = ap.parse_args()
-    ref = json.load(open(a.prompt_from))
     g = Glm(a.model)
+    pf = a.prompt_from or (os.path.join(a.model, "prompt.json") if os.path.isfile(os.path.join(a.model, "prompt.json")) else None)
+    if pf:  # given, or the one tools/glm_fixture.py writes next to its model
+        ref = json.load(open(pf))
+    else:  # a fixture's weights are random, so any tokens test it equally well
+        V = json.load(open(os.path.join(a.model, "config.json")))["vocab_size"]
+        full = np.random.default_rng(7).integers(0, V, 32).tolist()
+        ref = {"prompt_ids": full[:8], "full_ids": full}
     prompt, full = ref["prompt_ids"], ref["full_ids"]
     tf_hf, hid_hf = hf_reference(g, a.model, full)
     # NumPy decode over the same tokens (teacher forced), then greedy from the prompt.

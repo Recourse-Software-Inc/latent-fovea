@@ -42,6 +42,11 @@ async function get(url) {
   }
 }
 
+try { if (!token()) throw 0; } catch {
+  console.error(`No KnowDrive read token: put one in ${TOKEN_FILE} or $KNOWDRIVE_TOKEN (a KnowDrive account is needed).`);
+  process.exit(1);
+}
+
 // 1. Every file in the store (id, path, tags, size), cached.
 const filesPath = path.join(OUT, 'files.json');
 let files;

@@ -17,22 +17,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
       - run: pip install numpy==2.* umap-learn==0.5.*
       - name: Start from the data branch
         run: |
           mkdir -p out
-          git fetch --depth 1 origin data
-          git --work-tree=out checkout FETCH_HEAD -- . && git reset -q
+          if git fetch --depth 1 origin data 2>/dev/null; then git --work-tree=out checkout FETCH_HEAD -- . && git reset -q
+          else echo "::warning::No data branch yet: building layouts only (run build-data for the built-in models)."; fi
           rm -rf out/.git
       - name: Build layouts
+        env:
+          MODELS: ${{ inputs.models }}
         run: |
           pca=""; for d in out/*/; do [ -f "$d/meta.json" ] && [ ! -f "$d/points.pca.f32" ] && pca="$pca $d"; done
           [ -n "$pca" ] && python tools/build_layouts.py --pca $pca
-          python tools/build_layouts.py --out out --verified web/verified.json --hf ${{ inputs.models }}
+          python tools/build_layouts.py --out out --verified web/verified.json --hf $MODELS
       - name: Publish to the data branch
         run: |
           cd out

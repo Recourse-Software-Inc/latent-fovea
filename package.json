@@ -1,0 +1,17 @@
+{
+  "name": "latent-fovea",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fly through the real latent space of an open-weights model in the browser.",
+  "license": "Apache-2.0",
+  "author": "Recourse Software Inc. (KnowDrive.ai)",
+  "repository": "github:Recourse-Software-Inc/latent-fovea",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "serve": "python3 tools/serve.py",
+    "check:gpt2": "node tools/check_forward.mjs",
+    "check:mdlm": "node tools/check_mdlm.mjs",
+    "check:umap": "node tools/check_umap.mjs web/data/gpt2"
+  }
+}

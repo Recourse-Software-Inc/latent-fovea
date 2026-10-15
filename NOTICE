@@ -9,24 +9,52 @@ Version 2.0 (see LICENSE).
 Redistributions and derivative works must keep this NOTICE file, as section 4(d)
 of the Apache License requires.
 
+KnowDrive, KnowDrive.ai, KnowDB and the KnowDrive logo (web/kd-logo.jpg) are
+trademarks of Recourse Software Inc. The Apache License does not grant
+permission to use them (section 6).
+
 -------------------------------------------------------------------------------
 Third-party work
 -------------------------------------------------------------------------------
 
-colibri
+colibrì
   https://github.com/JustVugg/colibri
-  Copyright Vincenzo Fornaro. Licensed under the Apache License, Version 2.0.
-  The GLM-5.2 engine (web/glm/, tools/glm_*.py) uses colibri's technique, which
+  Copyright 2026 Vincenzo Fornaro. Licensed under the Apache License, Version 2.0.
+  The GLM-5.2 engine (web/glm/, tools/glm_*.py) uses colibrì's technique, which
   keeps the dense part of a mixture-of-experts model resident and streams the
-  routed experts from disk. It also reads colibri's int4/int8 container format
-  and its .coli_usage routing history. The code here is an independent WebGPU
-  and NumPy implementation; no colibri source is included.
+  routed experts from disk. It also reads colibrì's int4/int8 container format
+  and its .coli_usage routing history, for interoperability. The code here is
+  an independent WebGPU and NumPy implementation; no colibrì source is included.
 
 GPT-2 byte-pair encoding
   https://github.com/openai/gpt-2
-  Copyright (c) 2019 OpenAI. Licensed under a modified MIT License.
-  web/bpe.js reimplements the GPT-2 encoder's byte-to-unicode mapping and
-  merge procedure.
+  web/bpe.js contains portions translated from src/encoder.py (the
+  byte-to-unicode mapping and the merge procedure), under this licence:
+
+  Modified MIT License
+
+  Software Copyright (c) 2019 OpenAI
+
+  We don’t claim ownership of the content you create with GPT-2, so it is yours to do with as you please.
+  We only ask that you use GPT-2 responsibly and clearly indicate your content was created using GPT-2.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+  associated documentation files (the "Software"), to deal in the Software without restriction,
+  including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
+  and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
+  subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+  The above copyright notice and this permission notice need not be included
+  with content created by the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+  BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
+  OR OTHER DEALINGS IN THE SOFTWARE.
 
 UMAP
   https://github.com/lmcinnes/umap
@@ -36,9 +64,11 @@ UMAP
   Healy and Melville, 2018).
 
 Models and data
-  The repository contains no model weights or data sets. The tools fetch them
-  from their publishers, and each comes under its own licence, which the viewer
-  shows:
+  The main branch contains no model weights or data sets. The tools fetch them
+  from their publishers. The `data` branch holds prebuilt data sets converted
+  from these models; each of its folders carries the model's licence (LICENSE)
+  and a statement of what was changed (NOTICE). Each model comes under its own
+  licence, which the viewer shows:
   - GPT-2: OpenAI, MIT License.
   - DistilGPT2: Hugging Face, Apache License 2.0.
   - MDLM: Sahoo et al., Kuleshov Group, Cornell, Apache License 2.0.

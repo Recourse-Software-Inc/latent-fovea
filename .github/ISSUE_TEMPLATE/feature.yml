@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Recourse Software Inc.
+name: Idea or request
+description: A model to support, a view to add, or something to make clearer.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like, and what would it show or make possible?
+    validations:
+      required: true

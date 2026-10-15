@@ -16,7 +16,12 @@ const [hashModel, hashMode] = (() => {
   const h = location.hash.slice(1).split('~');
   return h[0] === 'embeddings' ? ['', 'embeddings'] : [h[0] || '', h[1] || ''];
 })();
-let DATA = params.get('data') ? params.get('data').replace(/\/?$/, '/') : null;
+// A different model in the hash (typed, or a link) means a different page: reload to load it.
+addEventListener('hashchange', () => { if (location.hash.slice(1).split('~')[0].replace(/^embeddings$/, '') !== hashModel) location.reload(); });
+// ?data= takes a relative path on this site only (a folder name, not a URL), so a link can't
+// point the viewer at another host's files or inject markup through the name.
+const dataParam = params.get('data');
+let DATA = dataParam && /^[\w.\/-]+$/.test(dataParam) && !dataParam.includes('..') && !dataParam.startsWith('/') ? dataParam.replace(/\/?$/, '/') : null;
 let registry = null, modelId = null, browser = null;
 // '#hf:<owner>/<repo>' loads a model straight from Hugging Face: converted in the browser
 // on first use (build-worker.js), then served from the browser's own storage.
@@ -150,7 +155,7 @@ async function boot() {
   try {
     meta = await (await dataFetch(DATA + 'meta.json')).json();
   } catch {
-    msg.innerHTML = `No data at <b>${DATA}</b>. Build it with <b>tools/build_data.py</b> or run <b>tools/get_data.sh</b>.`;
+    msg.innerHTML = `No data at <b>${escapeHtml(DATA)}</b>. Fetch the prebuilt data sets with <b>tools/get_data.sh</b>, build one with <b>tools/build_data.py</b>, or load a model from Hugging Face in the browser: <a class="model-link" href="#hf:openai-community/gpt2">open GPT-2 from Hugging Face</a>. The live demo is at <a class="model-link" href="https://latent.knowdrive.ai">latent.knowdrive.ai</a>.`;
     return;
   }
   N = meta.n; D = meta.d; NC = meta.cells; rowBytes = meta.row_bytes;
@@ -535,7 +540,7 @@ $('axesForm').addEventListener('submit', (e) => {
 
 function buildLegend() {
   $('legend').innerHTML = meta.categories.map((k, i) =>
-    `<span data-c="${i}"${KD ? ` role="button" tabindex="0" title="Mask ${k} out (or back in)"` : ''}><i style="color:${CAT_COLORS[i]};background:${CAT_COLORS[i]}"></i>${KD || EX ? k : CAT_LABELS[k] || k} ${meta.category_counts[i].toLocaleString()}</span>`).join('');
+    `<span data-c="${i}"${KD ? ` role="button" tabindex="0" title="Mask ${escapeHtml(k)} out (or back in)"` : ''}><i style="color:${CAT_COLORS[i]};background:${CAT_COLORS[i]}"></i>${escapeHtml(KD || EX ? k : CAT_LABELS[k] || k)} ${meta.category_counts[i].toLocaleString()}</span>`).join('');
   if (KD) $('legend').onclick = (e) => {
     const s = e.target.closest('span[data-c]'); if (!s || !kd) return;
     kd.toggleDomain(+s.dataset.c); s.classList.toggle('off', kd.off.has(+s.dataset.c));

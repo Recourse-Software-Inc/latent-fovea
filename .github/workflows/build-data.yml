@@ -8,7 +8,7 @@ on:
     inputs:
       models:
         description: Comma-separated model keys from tools/build_data.py (added to or replacing those already on the data branch)
-        default: mdlm
+        default: gpt2,distilgpt2,mdlm
       projection:
         description: umap or pca
         default: umap
@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
       - run: pip install numpy==2.* umap-learn==0.5.*
@@ -30,22 +30,31 @@ jobs:
         run: |
           mkdir -p out
           if git fetch --depth 1 origin data 2>/dev/null; then git --work-tree=out checkout FETCH_HEAD -- . && git reset -q; fi
-          rm -rf out/.git out/README.md
+          rm -rf out/.git
           ls out
       - name: Build
+        env:
+          MODELS: ${{ inputs.models }}
+          PROJECTION: ${{ inputs.projection }}
         run: |
-          for m in $(echo "${{ inputs.models }}" | tr ',' ' '); do
+          for m in $(echo "$MODELS" | tr ',' ' '); do
+            # keep the folder's LICENSE and NOTICE (the model's licence and what was changed) across a rebuild
+            mkdir -p "keep/$m"; cp "out/$m/LICENSE" "out/$m/NOTICE" "keep/$m/" 2>/dev/null || true
             rm -rf "out/$m"
-            python tools/build_data.py --model "$m" --projection "${{ inputs.projection }}" --out "out/$m" --weights
+            python tools/build_data.py --model "$m" --projection "$PROJECTION" --out "out/$m" --weights
+            cp "keep/$m/"* "out/$m/" 2>/dev/null || true
           done
           python tools/build_data.py --registry out
       - name: Publish to the data branch
+        env:
+          MODELS: ${{ inputs.models }}
+          PROJECTION: ${{ inputs.projection }}
         run: |
           cd out
           git init -q -b data
           git config user.name "latent-fovea bot"
           git config user.email "actions@users.noreply.github.com"
-          printf '# latent-fovea data\n\nBuilt by .github/workflows/build-data.yml from %s. See each meta.json for source and licence.\n' "$GITHUB_SHA" > README.md
+          [ -f README.md ] || printf '# Latent Fovea data\n\nBuilt by .github/workflows/build-data.yml. Each folder carries its model licence (LICENSE) and what was changed (NOTICE); meta.json records the source.\n' > README.md
           git add -A
-          git commit -q -m "Data: ${{ inputs.models }} (${{ inputs.projection }}) from $GITHUB_SHA"
+          git commit -q -m "Data: $MODELS ($PROJECTION) from $GITHUB_SHA"
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data:data

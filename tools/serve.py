@@ -3,13 +3,38 @@
 # Copyright 2026 Recourse Software Inc.
 """Static dev server for web/ with HTTP Range support (tiles are streamed by range).
 
-    python3 tools/serve.py [--port 8080]
+    python3 tools/serve.py [--port 8080] [--host 127.0.0.1] [--root web]
+
+It sends the same security headers as the deployed site (SECURITY_HEADERS, also written to
+_headers by tools/stage_static.py), so a page that breaks the policy breaks here first.
 """
 import argparse
 import functools
 import http.server
 import os
 import re
+
+# What the pages may load: scripts only from this site (plus WebAssembly), network requests only to
+# this site, Hugging Face (models and their CDN) and Neuronpedia (SAE feature descriptions).
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "worker-src 'self' blob:",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://www.neuronpedia.org",
+    "frame-src 'self'",
+    "base-uri 'none'",
+    "object-src 'none'",
+    "form-action 'self'",
+])
+SECURITY_HEADERS = {
+    "Content-Security-Policy": CSP,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
 
 MIME = {".wasm": "application/wasm", ".js": "text/javascript", ".json": "application/json"}
 
@@ -21,6 +46,8 @@ class RangeHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Cache-Control", "no-cache")
+        for k, v in SECURITY_HEADERS.items():
+            self.send_header(k, v)
         super().end_headers()
 
     def send_head(self):
@@ -61,11 +88,18 @@ class RangeHandler(http.server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=8080)
+    ap = argparse.ArgumentParser(description="Serve web/ (or a staged site) with HTTP Range support.")
+    ap.add_argument("--port", type=int, default=8080, help="port (default 8080)")
+    ap.add_argument("--host", default="127.0.0.1", help="address to bind (default 127.0.0.1; 0.0.0.0 inside a container or VM)")
     ap.add_argument("--root", help="directory to serve (default: web/)")
     a = ap.parse_args()
     root = a.root or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web")
+    if not os.path.isdir(os.path.join(root, "data")):
+        print("note: no data/ folder yet. Run tools/get_data.sh, or build one with tools/build_data.py.")
     handler = functools.partial(RangeHandler, directory=os.path.abspath(root))
-    print(f"latent-fovea: http://127.0.0.1:{a.port}/")
-    http.server.ThreadingHTTPServer(("127.0.0.1", a.port), handler).serve_forever()
+    try:
+        server = http.server.ThreadingHTTPServer((a.host, a.port), handler)
+    except OSError as e:
+        raise SystemExit(f"cannot listen on {a.host}:{a.port} ({e.strerror}); try --port {a.port + 1}")
+    print(f"latent-fovea: http://{'127.0.0.1' if a.host == '0.0.0.0' else a.host}:{a.port}/")
+    server.serve_forever()

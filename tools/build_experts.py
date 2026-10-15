@@ -6,7 +6,7 @@ expert's row of the router (mlp.gate.weight, F32 [256, 6144] per MoE layer). The
 expert as sigmoid(row · h) for the token's normalised hidden state h, so the row is the direction
 that wakes the expert: experts whose rows point the same way answer to the same kind of state.
 
-    ~/.cache/latent-fovea/venv/bin/python tools/build_experts.py --model /Volumes/<drive>/glm52_i4 --out web/data/glm52-experts
+    python3 tools/build_experts.py --model /Volumes/<drive>/glm52_i4 --out web/data/glm52-experts
 
 Writes the same layout as tools/build_data.py (tiles, exact kNN, UMAP and PCA, labels, categories)
 with meta.kind = "experts", plus experts.json: per row its layer, index, correction bias, routing

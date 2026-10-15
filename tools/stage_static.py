@@ -26,7 +26,7 @@ if os.path.exists(a.out):
     shutil.rmtree(a.out)
 os.makedirs(a.out)
 for f in os.listdir(root):
-    if f == "glm-test.html": continue  # a local self-check (needs fixtures under data/)
+    if f in ("glm-test.html", "glm-test.js"): continue  # a local self-check (needs fixtures under data/)
     if f.endswith((".js", ".wasm", ".css", ".jpg")) or f == "verified.json" or f.endswith(".html"):
         shutil.copy(os.path.join(root, f), a.out)
 for sub in ("glm",):  # code in subfolders (the GLM-5.2 engine and worker)
@@ -35,6 +35,8 @@ for sub in ("glm",):  # code in subfolders (the GLM-5.2 engine and worker)
 
 data = os.path.join(root, "data")
 os.makedirs(os.path.join(a.out, "data"))
+if not os.path.isfile(os.path.join(data, "models.json")):
+    raise SystemExit(f"no {data}/models.json: fetch data with tools/get_data.sh or build it with tools/build_data.py")
 reg = json.load(open(os.path.join(data, "models.json")))
 links = dict(x.split("=", 1) for x in a.link)
 for m in reg["models"]:
@@ -99,8 +101,11 @@ for m in reg["models"]:
 lay = os.path.join(data, "layouts")  # precomputed cluster maps for models loaded from Hugging Face
 if os.path.isdir(lay) and not a.only:
     shutil.copytree(lay, os.path.join(a.out, "data", "layouts"))
-# Cloudflare Pages / Netlify-style headers: cache the model data
+# Cloudflare Pages / Netlify-style headers: the dev server's security headers on every page, and
+# caching for the model data
+from serve import SECURITY_HEADERS
 open(os.path.join(a.out, "_headers"), "w").write(
-    "/data/*\n  Cache-Control: public, max-age=86400\n\n/*.wasm\n  Cache-Control: public, max-age=3600\n")
+    "/*\n" + "".join(f"  {k}: {v}\n" for k, v in SECURITY_HEADERS.items()) +
+    "\n/data/*\n  Cache-Control: public, max-age=86400\n\n/*.wasm\n  Cache-Control: public, max-age=3600\n")
 big = [(os.path.getsize(os.path.join(d, f)), os.path.join(d, f)) for d, _, fs in os.walk(a.out) for f in fs]
 print(f"staged {len(big)} files, {sum(s for s, _ in big) / 1e6:.0f} MB; largest {max(big)[0] / 1e6:.1f} MB")

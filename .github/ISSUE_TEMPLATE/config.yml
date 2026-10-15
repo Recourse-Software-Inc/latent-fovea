@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Recourse Software Inc.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Recourse-Software-Inc/latent-fovea/security/policy
+    about: Please report vulnerabilities privately, as SECURITY.md describes, not in a public issue.

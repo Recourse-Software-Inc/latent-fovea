@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Recourse Software Inc.
+name: Bug report
+description: Something in the viewer, an engine or a tool doesn't work as described.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce it
+      description: The page or command, the model, and the URL (including any ?options or #hash).
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser, OS and GPU
+      placeholder: e.g. Chrome 141, macOS 15, Apple M3
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output or error text
+      render: text

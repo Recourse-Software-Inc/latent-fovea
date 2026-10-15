@@ -6,6 +6,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 git fetch --depth 1 origin data
 mkdir -p web/data
-git --work-tree=web/data checkout origin/data -- .
+git --work-tree=web/data checkout FETCH_HEAD -- .
 git reset -q  # keep the index clean; web/data is gitignored
 ls web/data

@@ -1,5 +1,6 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 AND MIT
 // Copyright 2026 Recourse Software Inc.
+// Portions translated from openai/gpt-2 src/encoder.py, Copyright (c) 2019 OpenAI (Modified MIT; see NOTICE).
 // GPT-2 byte-level BPE tokenizer (encode + decode) from vocab.json and merges.txt.
 // Same algorithm as OpenAI's encoder.py; works in browsers and Node.
 

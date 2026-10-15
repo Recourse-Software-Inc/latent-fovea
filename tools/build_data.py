@@ -384,6 +384,8 @@ def main():
     }
     json.dump(meta, open(os.path.join(a.out, "meta.json"), "w"), indent=2)
     log("done", {f: os.path.getsize(os.path.join(a.out, f)) for f in sorted(os.listdir(a.out))})
+    root = os.path.dirname(os.path.normpath(a.out)) or "."
+    log("models.json lists", [m["id"] for m in write_registry(root)])  # the viewer's picker sees the new model
 
 
 def export_mdlm(st, repo, out, order):
