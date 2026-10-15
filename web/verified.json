@@ -1,0 +1,12 @@
+{
+  "about": "Models checked end to end: built in headless Chromium by the site's own code, then compared with PyTorch transformers on the same weights (tools/check_hf.mjs + tools/ref_hf.py). Prompt: 'The capital of France is'. Pass = same token ids, residual norms within 1e-3, attention within 1e-3, same top-1, top-10 overlap >= 9, top-10 probabilities within 5e-3.",
+  "models": {
+    "openai-community/gpt2": { "date": "2026-09-28", "residual": 1.3e-4, "prob": 2.8e-4, "ms_per_token": 76 },
+    "openai-community/gpt2-medium": { "date": "2026-09-28", "residual": 1.1e-4, "prob": 1.3e-3, "ms_per_token": 264 },
+    "HuggingFaceTB/SmolLM2-135M": { "date": "2026-09-28", "residual": 1.7e-7, "prob": 2.8e-6, "ms_per_token": 116 },
+    "EleutherAI/pythia-160m": { "date": "2026-09-28", "residual": 1.2e-5, "prob": 1.3e-5, "ms_per_token": 84 },
+    "Qwen/Qwen2.5-0.5B": { "date": "2026-09-28", "residual": 9.8e-7, "prob": 1e-4, "ms_per_token": 345 },
+    "Qwen/Qwen3-0.6B": { "date": "2026-09-28", "residual": 3.8e-7, "prob": 1e-4, "ms_per_token": 359 },
+    "Qwen/Qwen2.5-1.5B": { "date": "2026-09-28", "residual": 6.4e-7, "prob": 1.2e-5, "ms_per_token": 1265 }
+  }
+}

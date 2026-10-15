@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: Apache-2.0
+     Copyright 2026 Recourse Software Inc. -->
+<html lang="en">
+<head><meta charset="utf-8" /><title>GLM engine check</title>
+<style>body{background:#08080e;color:#e8e6f5;font:13px/1.5 ui-monospace,Menlo,monospace;padding:16px}b{color:#35e0e6}.bad{color:#ef6fa6}</style></head>
+<body>
+<h3>GLM-5.2 WebGPU engine vs tools/glm_ref.py</h3>
+<pre id="out">running…</pre>
+<script type="module">
+// Checks web/glm/glm-gpu.js against the NumPy/transformers reference on a container in
+// data/<set>/ (default glm-tiny): teacher-forced argmax, residuals after every layer, the experts
+// chosen, and greedy decoding. ?slots=N caps the expert pool to force streaming and eviction.
+import { Container, GlmGpu } from './glm/glm-gpu.js';
+const q = new URLSearchParams(location.search), set = q.get('set') || 'glm-tiny', base = `data/${set}/`;
+const out = document.getElementById('out'), log = (s) => { out.textContent += '\n' + s; };
+out.textContent = '';
+try {
+  const ref = await (await fetch(base + 'ref.json')).json();
+  const hid = new Float32Array(await (await fetch(base + 'ref_hidden.f32')).arrayBuffer());
+  const ct = await Container.fromUrl(base, ['config.json', 'out-00000.safetensors']);
+  const g = await GlmGpu.open(ct, { expertBudget: (+q.get('slots') || 4) * 1, ramBudget: +q.get('ram') || 0, prefetchAhead: +q.get('ahead') || 0 });
+  log(`loaded: ${g.L} layers, ${g.E} experts × top-${g.K}, pool ${g.nSlots} slots of ${g.slotBytes} B, ${(g.bytes / 1e6).toFixed(1)} MB on the GPU`);
+  const [T, L1, C] = ref.hidden_shape;
+  let agree = 0, worst = 0, expOk = 0, expN = 0;
+  const t0 = performance.now();
+  for (let pos = 0; pos < T; pos++) {
+    const { logits, experts } = await g.step(ref.full_ids[pos], pos);
+    let am = 0; for (let i = 1; i < logits.length; i++) if (logits[i] > logits[am]) am = i;
+    if (am === ref.tf_pred[pos]) agree++;
+    const res = await g.residuals();
+    for (let k = 0; k < L1 * C; k++) worst = Math.max(worst, Math.abs(res[k] - hid[pos * L1 * C + k]));
+    experts.forEach((ch, l) => { if (!ch.length) return; expN++; if (ch.map(([e]) => e).join() === ref.experts[pos][l].join()) expOk++; });
+  }
+  const ms = (performance.now() - t0) / T;
+  log(`teacher-forced argmax: <b>${agree}/${T}</b> match the reference`);
+  log(`residuals after every layer: max |diff| <b>${worst.toExponential(2)}</b>`);
+  log(`experts chosen: <b>${expOk}/${expN}</b> (position, layer) pairs identical`);
+  log(`expert cache: ${g.stats.hits} GPU hits, ${g.stats.ramHits} RAM hits (${g.stats.ramSaved} saved to RAM), ${g.stats.misses} drive reads, read ahead ${g.stats.prefetchUsed} used of ${g.stats.prefetched} (lookahead right ${g.stats.predictedRight}/${g.stats.predicted}), ${(g.stats.readBytes / 1e6).toFixed(2)} MB read · ${ms.toFixed(1)} ms per token`);
+  // greedy from the prompt, fresh caches
+  const g2 = await GlmGpu.open(ct, { expertBudget: (+q.get('slots') || 4) * 1, ramBudget: +q.get('ram') || 0, prefetchAhead: +q.get('ahead') || 0 });
+  const P = ref.prompt_ids; let tok = P[0];
+  for (let pos = 0; pos < P.length - 1; pos++) await g2.step(P[pos], pos);
+  const gen = []; tok = P[P.length - 1];
+  for (let pos = P.length - 1; gen.length < ref.greedy.length; pos++) {
+    const { logits } = await g2.step(tok, pos);
+    let am = 0; for (let i = 1; i < logits.length; i++) if (logits[i] > logits[am]) am = i;
+    gen.push(tok = am);
+  }
+  const same = gen.join() === ref.greedy.join();
+  window.RESULT = { agree, T, worst, expOk, expN, same };
+  log(`greedy ${ref.greedy.length} tokens: <b class="${same ? '' : 'bad'}">${same ? 'identical' : 'DIFFERENT'}</b> (${gen.join(' ')})`);
+  // batched prompt (prefill): the whole sequence at once must give the same last-token prediction,
+  // residuals and per-token experts as one token at a time
+  const g3 = await GlmGpu.open(ct, { expertBudget: (+q.get('slots') || 4) * 1, ramBudget: +q.get('ram') || 0, prefetchAhead: +q.get('ahead') || 0 });
+  const pf = await g3.prefill(ref.full_ids, 0);
+  let am3 = 0; for (let i = 1; i < pf.logits.length; i++) if (pf.logits[i] > pf.logits[am3]) am3 = i;
+  const r3 = await g3.residuals(); let w3 = 0;
+  for (let k = 0; k < L1 * C; k++) w3 = Math.max(w3, Math.abs(r3[k] - hid[(T - 1) * L1 * C + k]));
+  let e3 = 0, n3 = 0;
+  pf.experts.forEach((byTok, l) => byTok.forEach((ch, t) => { if (!ch.length) return; n3++; if (ch.map(([e]) => e).join() === ref.experts[t][l].join()) e3++; }));
+  const ok3 = am3 === ref.tf_pred[T - 1];
+  log(`prefill of all ${T} tokens: last prediction <b class="${ok3 ? '' : 'bad'}">${ok3 ? 'matches' : 'DIFFERS'}</b>, last residuals max |diff| <b>${w3.toExponential(2)}</b>, experts ${e3}/${n3} identical, ${g3.stats.misses} expert reads (one token at a time: ${g.stats.misses})`);
+  window.RESULT.prefill = { ok3, w3, e3, n3 };
+  out.innerHTML = out.textContent.replace(/&lt;(\/?b[^&]*)&gt;/g, '<$1>');
+} catch (e) { log('ERROR ' + (e.stack || e.message)); window.RESULT = { error: e.message }; }
+</script>
+</body>
+</html>

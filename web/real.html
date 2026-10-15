@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: Apache-2.0
+     Copyright 2026 Recourse Software Inc. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="author" content="Recourse Software Inc. (KnowDrive.ai)" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Is It Real?</title>
+<meta name="description" content="What in Latent Fovea is the model's real latent space, what is derived from it, and what is illustration." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" />
+<style>
+:root {
+  color-scheme: dark;
+  --ground: #08080e;
+  --panel: #0f0f1a;
+  --line: rgba(143, 130, 238, 0.18);
+  --line-strong: rgba(143, 130, 238, 0.34);
+  --text: #e8e6f5;
+  --muted: #a3a0bd;
+  --faint: #6f6c88;
+  --purple: #6c5ce7;
+  --lift: #8f82ee;
+  --cyan: #35e0e6;
+  --amber: #f2b56b;
+  --display: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--ground); }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }  /* links to sections glide there */
+body { margin: 0; background: var(--ground); color: var(--text); font: 400 16px/1.65 var(--display); -webkit-font-smoothing: antialiased; }
+a { color: var(--cyan); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.wrap { max-width: 860px; margin: 0 auto; padding: 28px 20px 80px; }
+
+header.top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.kd-logo { width: 32px; height: 32px; border-radius: 7px; flex: none; }
+.pill { display: inline-block; font: 500 10.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); text-decoration: none; }
+.pill.accent { color: #fff; background: var(--purple); border-color: var(--purple); }
+.pill.back { margin-left: auto; color: var(--cyan); border-color: rgba(53, 224, 230, .45); }
+.pill.back:hover { background: rgba(53, 224, 230, .12); }
+.embed .pill.back { margin-right: 46px; }  /* clear of the close button */
+.embed h1 { margin-top: 36px; }
+
+.kicker { font: 500 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin: 0 0 10px; }
+h1 { font: 800 clamp(34px, 7vw, 56px)/1.04 var(--display); letter-spacing: -.03em; margin: 56px 0 18px; color: #fff; text-wrap: balance; }
+h2 { font: 800 clamp(22px, 4vw, 28px)/1.2 var(--display); letter-spacing: -.02em; margin: 0 0 14px; color: #fff; text-wrap: balance; }
+h3 { font: 700 17px/1.3 var(--display); margin: 0 0 6px; color: #fff; }
+p { margin: 0 0 14px; }
+.lede { font-size: clamp(18px, 2.6vw, 21px); color: var(--text); max-width: 42ch; }
+.lede b { color: #fff; }
+section { margin-top: 64px; }
+.muted { color: var(--muted); }
+
+.answer { margin-top: 34px; border: 1px solid var(--line-strong); border-radius: 14px; padding: 22px 24px; background: linear-gradient(135deg, rgba(108, 92, 231, .16), rgba(53, 224, 230, .05)); }
+.answer .kicker { color: var(--lift); }
+.answer blockquote { margin: 0; font: 500 18px/1.6 var(--display); color: #fff; }
+
+/* The three layers */
+.layers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; }
+.layer { border: 1px solid var(--line); border-top: 3px solid var(--c); border-radius: 12px; padding: 18px 18px 14px; background: var(--panel); }
+.layer .tag { font: 700 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--c); }
+.layer h3 { margin-top: 8px; }
+.layer p { font-size: 14px; color: var(--muted); margin-bottom: 12px; }
+.layer ul { margin: 0; padding: 0; list-style: none; font: 400 12.5px/1.5 var(--mono); }
+.layer li { padding: 7px 0; border-top: 1px solid var(--line); color: var(--text); }
+.real { --c: var(--cyan); }
+.derived { --c: var(--lift); }
+.illus { --c: var(--amber); }
+.fam { --c: var(--text); }
+
+/* The pipeline */
+.flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 8px; margin-top: 22px; }
+.step { border: 1px solid var(--line-strong); border-radius: 12px; padding: 14px 16px; background: var(--panel); }
+.step .n { font: 700 10.5px var(--mono); letter-spacing: .14em; color: var(--faint); text-transform: uppercase; }
+.step b { display: block; color: #fff; font-weight: 700; margin: 4px 0 4px; }
+.step span { font-size: 13.5px; color: var(--muted); }
+.arrow { align-self: center; color: var(--faint); font: 500 18px var(--mono); }
+.check { margin-top: 12px; font: 400 12.5px/1.6 var(--mono); color: var(--muted); border-left: 2px solid var(--cyan); padding: 2px 0 2px 12px; }
+
+/* Detail rows */
+.rows { margin-top: 18px; border-top: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: 110px 1fr; gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.row .tag { font: 700 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--c); padding-top: 4px; }
+.row h3 { font-size: 16px; }
+.row p { margin: 0; color: var(--muted); font-size: 15px; }
+
+/* Map vs territory */
+.mt { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 22px; }
+.mt figure { margin: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 16px; }
+.mt svg { width: 100%; height: auto; display: block; }
+.mt figcaption { font-size: 14px; color: var(--muted); margin-top: 10px; }
+.mt figcaption b { color: #fff; }
+
+.views { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 22px; }
+.view { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px 6px; background: var(--panel); }
+.view svg { width: 100%; height: auto; display: block; margin-bottom: 12px; background: var(--ground); border-radius: 8px; }
+.view .tag { font: 700 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--cyan); }
+.view h3 { margin-top: 6px; }
+.view p { font-size: 14.5px; color: var(--muted); }
+.view p b { color: var(--text); }
+.confuse { display: grid; gap: 12px; margin-top: 22px; }
+.confuse > div { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; background: var(--panel); }
+.confuse .n { font: 700 11px var(--mono); color: var(--amber); letter-spacing: .12em; }
+.confuse p { color: var(--muted); font-size: 15px; margin: 6px 0 0; }
+.confuse p b { color: var(--text); }
+
+.say { border-left: 3px solid var(--purple); padding: 4px 0 4px 18px; font-size: 18px; color: #fff; margin: 18px 0 0; }
+footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line); font: 400 12px/1.6 var(--mono); color: var(--faint); }
+
+@media (max-width: 720px) {
+  .layers, .mt, .views { grid-template-columns: 1fr; }
+  .flow { grid-template-columns: 1fr; }
+  .arrow { justify-self: center; transform: rotate(90deg); }
+  .row { grid-template-columns: 1fr; gap: 4px; }
+  h1 { margin-top: 40px; }
+}
+/* The handbook */
+.book-intro { margin-top: 72px; padding-top: 28px; border-top: 2px solid var(--line-strong); }
+.toc { margin: 22px 0 0; padding: 18px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); columns: 2; column-gap: 28px; }
+.toc h3 { break-after: avoid; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); font-family: var(--mono); margin: 10px 0 6px; }
+.toc h3:first-child { margin-top: 0; }
+.toc ol { margin: 0 0 6px; padding-left: 22px; font-size: 14.5px; }
+.toc li { break-inside: avoid; padding: 2px 0; }
+.toc a { color: var(--text); text-decoration: none; }
+.toc a:hover { color: var(--cyan); }
+.part { margin-top: 72px; }
+.part > .kicker { color: var(--lift); }
+.ch { margin-top: 56px; }
+.ch h2 { margin-bottom: 10px; }
+.ch h3 { font-size: 18px; margin: 26px 0 8px; }
+.ch p, .ch li { color: var(--text); }
+.ch p.muted { color: var(--muted); }
+.ch ul, .ch ol { padding-left: 22px; margin: 0 0 14px; }
+.ch li { margin: 4px 0; }
+.ch .goal { font-size: 17px; color: #fff; border-left: 3px solid var(--cyan); padding: 2px 0 2px 16px; margin: 0 0 18px; }
+.defs { margin: 14px 0 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 6px 18px; }
+.defs div { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.defs div:last-child { border-bottom: 0; }
+.defs dt { font-weight: 700; color: #fff; }
+.defs dd { margin: 4px 0 0; color: var(--muted); font-size: 15px; }
+.eq { font: 500 15px/1.6 var(--mono); color: #fff; background: rgba(108, 92, 231, .1); border-radius: 10px; padding: 12px 16px; margin: 12px 0 16px; overflow-x: auto; white-space: nowrap; }
+.eq + .eq-note { margin-top: -8px; font-size: 14px; color: var(--muted); }
+.box { border-radius: 12px; padding: 14px 18px; margin: 16px 0; font-size: 15px; }
+.box b:first-child { display: block; font: 700 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; margin-bottom: 6px; }
+.box.try { background: rgba(53, 224, 230, .07); border: 1px solid rgba(53, 224, 230, .3); }
+.box.try b:first-child { color: var(--cyan); }
+.box.limit { background: rgba(242, 181, 107, .07); border: 1px solid rgba(242, 181, 107, .3); }
+.box.limit b:first-child { color: var(--amber); }
+.box.ex { background: rgba(143, 130, 238, .08); border: 1px solid var(--line-strong); }
+.box.ex b:first-child { color: var(--lift); }
+.box p:last-child, .box ul:last-child { margin-bottom: 0; }
+kbd { font: 500 12px var(--mono); padding: 1px 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; color: #fff; background: rgba(255, 255, 255, .04); }
+.ui { font: 500 13px var(--mono); color: var(--cyan); white-space: nowrap; }
+.keys-table, .gloss { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 15px; }
+.keys-table td, .gloss td { border-bottom: 1px solid var(--line); padding: 9px 8px; vertical-align: top; }
+.keys-table td:first-child { width: 120px; white-space: nowrap; }
+.gloss td:first-child { width: 190px; font-weight: 700; color: #fff; }
+.gloss td:last-child, .keys-table td:last-child { color: var(--muted); }
+.back-top { font: 500 12px var(--mono); }
+@media (max-width: 720px) { .toc { columns: 1; } .gloss td:first-child { width: 120px; } }
+
+/* Navigation: a contents sidebar (wide screens) or a contents button (narrow), section anchors,
+   previous / next chapter links, back to top, and a glossary filter. */
+.side { position: fixed; z-index: 20; display: none; font: 400 13px/1.45 var(--display); scrollbar-width: thin; }
+.side .side-h { font: 700 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin: 14px 0 4px; }
+.side .side-h:first-child { margin-top: 0; }
+.side a { display: block; color: var(--muted); text-decoration: none; padding: 3px 8px 3px 10px; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
+.side a:hover { color: #fff; background: rgba(143, 130, 238, .08); }
+.side a.on { color: var(--cyan); border-left-color: var(--cyan); background: rgba(53, 224, 230, .06); }
+.side a .n { display: inline-block; min-width: 20px; color: var(--faint); font: 500 11px var(--mono); }
+.side a.on .n { color: var(--cyan); }
+.side a.sub { font-size: 12.5px; padding-left: 30px; }
+@media (min-width: 1180px) {
+  html:not(.embed) .side { display: block; top: 20px; bottom: 20px; left: 20px; width: 250px; overflow-y: auto; padding-right: 6px; }
+  html:not(.embed) .wrap { margin-left: max(300px, calc((100vw - 860px) / 2)); }
+  html:not(.embed) .fab.toc { display: none; }
+}
+.side.sheet { display: block; right: 16px; bottom: 74px; width: min(340px, calc(100vw - 32px)); max-height: min(70vh, 640px); overflow-y: auto;
+  padding: 14px 10px 14px 6px; background: #0d0d17; border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: 0 24px 70px rgba(0, 0, 0, .6); }
+.fab { position: fixed; z-index: 21; right: 16px; bottom: 16px; font: 500 12px var(--mono); letter-spacing: .06em; color: #fff; background: var(--purple);
+  border: 0; border-radius: 999px; padding: 10px 16px; cursor: pointer; box-shadow: 0 8px 26px rgba(0, 0, 0, .5); }
+.fab:hover { background: var(--lift); }
+.fab.top { bottom: 16px; right: auto; left: 16px; background: rgba(15, 15, 26, .92); border: 1px solid var(--line-strong); color: var(--muted); }
+.fab.top:hover { color: #fff; }
+@media (min-width: 1180px) { html:not(.embed) .fab.top { left: auto; right: 16px; } }
+.fab[hidden] { display: none; }
+h2 .anchor, h3 .anchor { margin-left: 8px; font: 500 .7em var(--mono); color: var(--faint); text-decoration: none; opacity: 0; transition: opacity .15s; }
+h2:hover .anchor, h3:hover .anchor, .anchor:focus { opacity: 1; }
+.anchor:hover { color: var(--cyan); }
+:target, [id] { scroll-margin-top: 20px; }
+.pn { display: flex; justify-content: space-between; gap: 12px; margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
+.pn a { display: block; max-width: 48%; text-decoration: none; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); font-size: 14px; }
+.pn a:hover { border-color: var(--lift); }
+.pn a small { display: block; font: 500 10.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+.pn .next { margin-left: auto; text-align: right; }
+.gloss-find { width: 100%; margin: 8px 0 4px; padding: 10px 14px; font: 400 15px var(--display); color: #fff; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 10px; }
+.gloss-find:focus { outline: none; border-color: var(--cyan); }
+.gloss tr.hide { display: none; }
+</style>
+</head>
+<body>
+
+<nav class="side" id="side" aria-label="On this page"></nav>
+<button type="button" class="fab toc" id="tocBtn" aria-controls="side" aria-expanded="false">☰ Contents</button>
+<button type="button" class="fab top" id="topBtn" hidden aria-label="Back to the top">↑ Top</button>
+<div class="wrap">
+
+<header class="top">
+  <img class="kd-logo" src="kd-logo.jpg" alt="KnowDrive" width="32" height="32" />
+  <span class="pill accent">Latent Fovea</span>
+  <a class="pill back" id="back" href="./">Open the visualizer</a>
+</header>
+
+<h1 id="top">Is this really a model's latent space?</h1>
+<p class="lede">Yes. But only some of what you see is the <b>raw data</b>. The rest is either <b>derived</b> from it by a standard technique, or <b>drawn</b> to make it readable. This page separates the three.</p>
+<p class="muted" style="margin-top:-4px">New to all this, or looking for how to use a view? <a href="#handbook">Read the handbook ↓</a>: eighteen short chapters, from what a language model computes to every view in the tool, and a glossary of terms.</p>
+
+<div class="answer">
+  <p class="kicker">Summary of this tool</p>
+  <blockquote>Every number on screen comes from the published weights of the model you picked, running for real in your browser: the built-in GPT-2, DistilGPT2 or MDLM, or an open model loaded from Hugging Face. The point cloud is that model's own vocabulary, its first latent space: every token is a vector of hundreds or thousands of numbers (50,257 tokens of 768 numbers for GPT-2, 151,936 tokens of 1,536 for Qwen2.5-1.5B). You can't see that many dimensions, so the cloud is a 3-D map of them, and like any map it distorts. The model has more latent spaces than this one, hidden inside it: after every layer, each token is carried as a new vector, its internal state, and these hidden states are where the model does its work. They are shown too: as a space of their own, each token a path from its embedding through every layer (press S); through the logit lens, which reads what each state would say (the River); and through attention, which shows how information moves between them (the Flow). When you type a query the model genuinely runs; every intermediate result is recorded and replayed slowly. The playback is slowed down, not the model.</blockquote>
+</div>
+
+<section id="nothing-simulated" data-nav="Nothing is simulated">
+  <p class="kicker">Where the numbers come from</p>
+  <h2>Nothing is simulated</h2>
+  <p class="muted">The model runs once per token at full speed. The visualizer records everything it computed, then plays it back layer by layer at whatever speed you choose.</p>
+  <div class="flow" role="list">
+    <div class="step" role="listitem"><div class="n">01 · Weights</div><b>The published model</b><span>Official releases from each model's authors, kept at 16-bit precision. Models too big for memory are read from storage one layer at a time: the same numbers, just slower.</span></div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="step" role="listitem"><div class="n">02 · Compute</div><b>A real forward pass</b><span>The model's own maths, rebuilt from scratch and running in your browser: on the CPU, or on your graphics card where the browser supports WebGPU. Same weights, same steps.</span></div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="step" role="listitem"><div class="n">03 · Replay</div><b>Recorded, then slowed</b><span>Attention, neurons and predictions at every layer, replayed in the order they happened.</span></div>
+  </div>
+  <p class="check">Checked against the standard reference implementations on the same weights. The built-in GPT-2 matches to 4 decimal places, and MDLM to about 0.00001. The Hugging Face models marked <b>Verified</b> in the model browser pick the same next word, share at least 9 of the top 10 guesses, and give probabilities within 0.0013 at worst. Models marked <b>Should load</b> use a supported design but have not been checked one by one. On the GPU, every recording (the internal state at every layer, attention, neurons, attribution, interventions) is checked against the CPU version (with full-precision weights; the optional 8-bit weights are a close copy, and the status line says when they are used): they agree to about one part in 100,000 for most models (one in 10,000 for Pythia, whose large activations magnify rounding), and probabilities to within 0.001.</p>
+</section>
+
+<section id="real-derived" data-nav="Real, derived, illustrated">
+  <p class="kicker">Three kinds of thing on screen</p>
+  <h2>Real, derived, illustrated</h2>
+  <div class="layers">
+    <div class="layer real">
+      <div class="tag">Real</div>
+      <h3>The model's own numbers</h3>
+      <p>Read straight out of the computation. No interpretation added.</p>
+      <ul>
+        <li>The text it writes</li>
+        <li>Attention of every head, every layer</li>
+        <li>Every MLP neuron activation (36,864 in GPT-2)</li>
+        <li>How hard each head writes</li>
+        <li>A token's full vector (the barcode)</li>
+        <li>Nearest neighbours, measured in the full space</li>
+        <li>What changes when a part is knocked out</li>
+        <li>Each token's internal state after every layer (the hidden states)</li>
+        <li>How much attention and the MLP change that state, layer by layer</li>
+      </ul>
+    </div>
+    <div class="layer derived">
+      <div class="tag">Derived</div>
+      <h3>Real data through a standard lens</h3>
+      <p>Established techniques applied to the real numbers. Useful, but they add assumptions.</p>
+      <ul>
+        <li>The 3-D positions (Clusters or PCA)</li>
+        <li>The logit lens: "what it would say at layer N"</li>
+        <li>Attribution: which parts pushed toward a word</li>
+        <li>A neuron's effect on a word, and the words it writes</li>
+        <li>The local re-layout inside the fovea (PCA), with the share of the local variation it shows</li>
+        <li>The hidden-state space (S): a 3-D PCA of those states</li>
+        <li>The lens river: the logit lens at every depth at once</li>
+        <li>Attention flow (attention × what each token offers) and rollout</li>
+      </ul>
+    </div>
+    <div class="layer illus">
+      <div class="tag">Illustrated</div>
+      <h3>A picture of real data</h3>
+      <p>Drawings that make the numbers readable. They are not objects inside the model.</p>
+      <ul>
+        <li>The purple "thought path" and the fly-through along it</li>
+        <li>Attention arcs (averaged over heads)</li>
+        <li>Masked MDLM slots floating in space</li>
+        <li>Token colours (word, number…)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="map-territory" data-nav="The map and the territory">
+  <p class="kicker">The most important caveat</p>
+  <h2>The cloud is a map. The neighbour lines are the territory.</h2>
+  <p class="muted">The real space has hundreds to thousands of dimensions: 768 for GPT-2, 1,536 for Qwen2.5-1.5B. The cloud squeezes it into 3 so you can see it, in one of two layouts (switch with C). <b>Clusters</b> (UMAP) groups tokens with some of their neighbours, so points close together tend to be related, but most true neighbours end up elsewhere: the line under the Clusters / PCA switch measures how much survives, live, for the model you are looking at: how often a token's true nearest neighbours land in the same visible region of the cloud, and how well the cloud's near/far ordering agrees with the real space. (Strictly, only about 6% of a GPT-2 token's 15 nearest neighbours are also among its 15 nearest in the cloud, about 2% for Qwen2.5-0.5B; that is a 15-of-150,000 exact-rank test, far stricter than what the eye reads, and the ⓘ there gives it as the caveat.) Distances between clusters, directions and the overall shape mean very little; the layout is one of many equally valid arrangements, and UMAP started from a different random seed would place the clusters differently. <b>PCA</b> shows the three directions along which the vectors vary most. Those directions are real, but for GPT-2 they hold only 3.4% of the variation, so most tokens pile into one blob and fewer than 1% of true neighbours stay together. To see the real geometry, open the <b>Embeddings</b> view and look at a token: the cyan neighbour lines are measured in the full space, which is why they often jump across the cloud. That jump is the map's distortion made visible.</p>
+  <div class="mt">
+    <figure>
+      <svg viewBox="0 0 300 170" role="img" aria-label="Three-dimensional map: two tokens look far apart">
+        <g fill="#8f82ee" opacity=".35">
+          <circle cx="40" cy="40" r="2"/><circle cx="62" cy="58" r="2"/><circle cx="90" cy="30" r="2"/><circle cx="120" cy="70" r="2"/><circle cx="150" cy="44" r="2"/><circle cx="180" cy="90" r="2"/><circle cx="210" cy="60" r="2"/><circle cx="238" cy="120" r="2"/><circle cx="72" cy="120" r="2"/><circle cx="104" cy="140" r="2"/><circle cx="140" cy="118" r="2"/><circle cx="262" cy="42" r="2"/><circle cx="200" cy="140" r="2"/><circle cx="30" cy="96" r="2"/>
+        </g>
+        <path d="M58 72 Q150 -10 246 104" fill="none" stroke="#35e0e6" stroke-width="1.6" stroke-dasharray="4 4"/>
+        <circle cx="58" cy="72" r="6" fill="#35e0e6"/><circle cx="246" cy="104" r="6" fill="#35e0e6"/>
+        <text x="58" y="94" fill="#e8e6f5" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="middle">token A</text>
+        <text x="246" y="126" fill="#e8e6f5" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="middle">token B</text>
+      </svg>
+      <figcaption><b>The map (3-D), schematic:</b> two tokens that are neighbours can land far apart. The dashed line is the real neighbour link reaching across.</figcaption>
+    </figure>
+    <figure>
+      <svg viewBox="0 0 300 170" role="img" aria-label="The full space: the same two tokens are close">
+        <g fill="#8f82ee" opacity=".35">
+          <circle cx="40" cy="40" r="2"/><circle cx="260" cy="30" r="2"/><circle cx="30" cy="140" r="2"/><circle cx="270" cy="150" r="2"/><circle cx="80" cy="96" r="2"/><circle cx="220" cy="80" r="2"/><circle cx="120" cy="30" r="2"/><circle cx="190" cy="140" r="2"/>
+        </g>
+        <line x1="136" y1="86" x2="168" y2="86" stroke="#35e0e6" stroke-width="1.6"/>
+        <circle cx="136" cy="86" r="6" fill="#35e0e6"/><circle cx="168" cy="86" r="6" fill="#35e0e6"/>
+        <text x="124" y="90" fill="#e8e6f5" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="end">token A</text>
+        <text x="180" y="90" fill="#e8e6f5" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="start">token B</text>
+      </svg>
+      <figcaption><b>The territory (full space):</b> the same two tokens, measured in the model's real space, sit next to each other. In the Embeddings view, look at a point and the fovea shows you this geometry.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="four-views" data-nav="One pass, four views">
+  <p class="kicker">The forward pass, four ways</p>
+  <h2>One pass, four views</h2>
+  <p class="muted">When you type a query, everything the model computes for every token is kept. The panel at the bottom shows it three ways (switch with the <b>Field · River · Flow</b> tabs, or the keys 1, 2, 3), and the scene above can swap the word cloud for the model's internal states (<b>Hidden states</b>, or S). Each view answers a different question about the same numbers. Click a token chip to put that token on screen in all of them.</p>
+  <div class="views">
+    <div class="view">
+      <svg viewBox="0 0 240 110" role="img" aria-label="Schematic: a grid of heads, a strip of neurons and a column of guesses, one row per layer">
+        <g fill="#6c5ce7"><rect x="8" y="8" width="10" height="10" opacity="0.3"/><rect x="21" y="8" width="10" height="10" opacity="0.8"/><rect x="34" y="8" width="10" height="10" opacity="0.5"/><rect x="47" y="8" width="10" height="10" opacity="0.95"/><rect x="60" y="8" width="10" height="10" opacity="0.4"/><rect x="73" y="8" width="10" height="10" opacity="0.6"/><rect x="86" y="8" width="10" height="10" opacity="0.25"/><rect x="99" y="8" width="10" height="10" opacity="0.7"/><rect x="8" y="26" width="10" height="10" opacity="0.95"/><rect x="21" y="26" width="10" height="10" opacity="0.4"/><rect x="34" y="26" width="10" height="10" opacity="0.6"/><rect x="47" y="26" width="10" height="10" opacity="0.25"/><rect x="60" y="26" width="10" height="10" opacity="0.7"/><rect x="73" y="26" width="10" height="10" opacity="0.3"/><rect x="86" y="26" width="10" height="10" opacity="0.8"/><rect x="99" y="26" width="10" height="10" opacity="0.5"/><rect x="8" y="44" width="10" height="10" opacity="0.25"/><rect x="21" y="44" width="10" height="10" opacity="0.7"/><rect x="34" y="44" width="10" height="10" opacity="0.3"/><rect x="47" y="44" width="10" height="10" opacity="0.8"/><rect x="60" y="44" width="10" height="10" opacity="0.5"/><rect x="73" y="44" width="10" height="10" opacity="0.95"/><rect x="86" y="44" width="10" height="10" opacity="0.4"/><rect x="99" y="44" width="10" height="10" opacity="0.6"/><rect x="8" y="62" width="10" height="10" opacity="0.8"/><rect x="21" y="62" width="10" height="10" opacity="0.5"/><rect x="34" y="62" width="10" height="10" opacity="0.95"/><rect x="47" y="62" width="10" height="10" opacity="0.4"/><rect x="60" y="62" width="10" height="10" opacity="0.6"/><rect x="73" y="62" width="10" height="10" opacity="0.25"/><rect x="86" y="62" width="10" height="10" opacity="0.7"/><rect x="99" y="62" width="10" height="10" opacity="0.3"/><rect x="8" y="80" width="10" height="10" opacity="0.4"/><rect x="21" y="80" width="10" height="10" opacity="0.6"/><rect x="34" y="80" width="10" height="10" opacity="0.25"/><rect x="47" y="80" width="10" height="10" opacity="0.7"/><rect x="60" y="80" width="10" height="10" opacity="0.3"/><rect x="73" y="80" width="10" height="10" opacity="0.8"/><rect x="86" y="80" width="10" height="10" opacity="0.5"/><rect x="99" y="80" width="10" height="10" opacity="0.95"/></g>
+        <g fill="#35e0e6" opacity=".55"><rect x="118" y="8" width="56" height="10"/><rect x="118" y="26" width="56" height="10" opacity=".5"/><rect x="118" y="44" width="56" height="10" opacity=".8"/><rect x="118" y="62" width="56" height="10" opacity=".4"/><rect x="118" y="80" width="56" height="10" opacity=".7"/></g>
+        <g fill="#8f82ee"><rect x="184" y="10" width="46" height="6"/><rect x="184" y="28" width="38" height="6"/><rect x="184" y="46" width="24" height="6"/><rect x="184" y="64" width="14" height="6"/><rect x="184" y="82" width="8" height="6"/></g>
+        <text x="8" y="106" fill="#6f6c88" font-family="JetBrains Mono, monospace" font-size="8">HEADS</text><text x="118" y="106" fill="#6f6c88" font-family="JetBrains Mono, monospace" font-size="8">MLP</text><text x="184" y="106" fill="#6f6c88" font-family="JetBrains Mono, monospace" font-size="8">LENS</text>
+      </svg>
+      <div class="tag">Field · 1</div>
+      <h3>Which parts are working, and how hard?</h3>
+      <p><b>Read it:</b> one row per layer, the embedding at the bottom. Each square is an attention head, brighter when it writes more into the model's state, with a small comb showing which recent tokens it looks at. The strip beside it is every MLP neuron of that layer. On the right, the logit lens: what the model would say if it stopped at that layer.</p>
+      <p><b>Watch for:</b> the lens changing its mind as you go up. Point at a head for exactly what it reads; press A to see which parts pushed toward the next word.</p>
+    </div>
+    <div class="view">
+      <svg viewBox="0 0 240 110" role="img" aria-label="Schematic: stacked bands over depth, one word's band growing to dominate">
+        <path d="M10 96 C60 96 60 92 110 90 C160 88 160 40 230 30 L230 96 Z" fill="#35e0e6" opacity=".8"/>
+        <path d="M10 96 C60 96 60 92 110 90 C160 88 160 40 230 30 L230 22 C160 30 160 60 110 60 C60 62 60 40 10 40 Z" fill="#a996ff" opacity=".8"/>
+        <path d="M10 40 C60 40 60 62 110 60 C160 60 160 30 230 22 L230 16 C160 22 160 50 110 48 C60 46 60 20 10 20 Z" fill="#9a97b3" opacity=".35"/>
+        <path d="M10 12 C60 10 110 14 150 22 C190 32 210 60 230 74" fill="none" stroke="#fff" stroke-width="1.4"/>
+        <text x="160" y="74" fill="#08080e" font-family="JetBrains Mono, monospace" font-size="9">Paris</text><text x="40" y="58" fill="#08080e" font-family="JetBrains Mono, monospace" font-size="9">the</text>
+        <text x="8" y="106" fill="#6f6c88" font-family="JetBrains Mono, monospace" font-size="8">EMBEDDING</text><text x="232" y="106" fill="#6f6c88" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="end">LAST LAYER</text>
+      </svg>
+      <div class="tag">River · 2</div>
+      <h3>When does it make up its mind?</h3>
+      <p><b>Read it:</b> left to right is depth through the model, from the embedding to the last layer. At each depth the coloured bands are the words it would say if it stopped there, each as tall as its probability, and a word keeps its colour all the way along. The empty space at the top is every other word in the vocabulary. The white line is how unsure it is: "as unsure as choosing among N words".</p>
+      <p><b>Watch for:</b> a band appearing, swelling and taking over; the readout names the layer where the final answer takes the lead for good. A guess that leads early and then vanishes is the model changing its mind.</p>
+    </div>
+    <div class="view">
+      <svg viewBox="0 0 240 110" role="img" aria-label="Schematic: tokens along the bottom, layers stacked, links from earlier tokens to a later one forming a cone">
+        <g fill="#e8e6f5" opacity=".35"><circle cx="30" cy="10" r="1.4"/><circle cx="50" cy="10" r="1.4"/><circle cx="70" cy="10" r="1.4"/><circle cx="90" cy="10" r="1.4"/><circle cx="110" cy="10" r="1.4"/><circle cx="130" cy="10" r="1.4"/><circle cx="150" cy="10" r="1.4"/><circle cx="170" cy="10" r="1.4"/><circle cx="190" cy="10" r="1.4"/><circle cx="210" cy="10" r="1.4"/><circle cx="30" cy="28" r="1.4"/><circle cx="50" cy="28" r="1.4"/><circle cx="70" cy="28" r="1.4"/><circle cx="90" cy="28" r="1.4"/><circle cx="110" cy="28" r="1.4"/><circle cx="130" cy="28" r="1.4"/><circle cx="150" cy="28" r="1.4"/><circle cx="170" cy="28" r="1.4"/><circle cx="190" cy="28" r="1.4"/><circle cx="210" cy="28" r="1.4"/><circle cx="30" cy="46" r="1.4"/><circle cx="50" cy="46" r="1.4"/><circle cx="70" cy="46" r="1.4"/><circle cx="90" cy="46" r="1.4"/><circle cx="110" cy="46" r="1.4"/><circle cx="130" cy="46" r="1.4"/><circle cx="150" cy="46" r="1.4"/><circle cx="170" cy="46" r="1.4"/><circle cx="190" cy="46" r="1.4"/><circle cx="210" cy="46" r="1.4"/><circle cx="30" cy="64" r="1.4"/><circle cx="50" cy="64" r="1.4"/><circle cx="70" cy="64" r="1.4"/><circle cx="90" cy="64" r="1.4"/><circle cx="110" cy="64" r="1.4"/><circle cx="130" cy="64" r="1.4"/><circle cx="150" cy="64" r="1.4"/><circle cx="170" cy="64" r="1.4"/><circle cx="190" cy="64" r="1.4"/><circle cx="210" cy="64" r="1.4"/><circle cx="30" cy="82" r="1.4"/><circle cx="50" cy="82" r="1.4"/><circle cx="70" cy="82" r="1.4"/><circle cx="90" cy="82" r="1.4"/><circle cx="110" cy="82" r="1.4"/><circle cx="130" cy="82" r="1.4"/><circle cx="150" cy="82" r="1.4"/><circle cx="170" cy="82" r="1.4"/><circle cx="190" cy="82" r="1.4"/><circle cx="210" cy="82" r="1.4"/></g>
+        <g stroke="#8f82ee" stroke-width=".8" opacity=".5"><line x1="30" y1="82" x2="90" y2="64"/><line x1="70" y1="64" x2="130" y2="46"/><line x1="50" y1="46" x2="170" y2="28"/><line x1="110" y1="82" x2="150" y2="64"/></g>
+        <g stroke="#35e0e6" stroke-width="1.6"><line x1="90" y1="28" x2="210" y2="10"/><line x1="150" y1="46" x2="210" y2="28"/><line x1="90" y1="64" x2="150" y2="46"/><line x1="70" y1="82" x2="90" y2="64"/></g>
+        <g fill="#35e0e6"><circle cx="210" cy="10" r="4"/><circle cx="210" cy="28" r="3"/><circle cx="150" cy="46" r="3"/><circle cx="90" cy="64" r="2.5"/><circle cx="90" cy="28" r="2.5"/><circle cx="70" cy="82" r="2"/></g>
+        <g fill="#35e0e6"><rect x="64" y="94" width="12" height="6"/><rect x="84" y="92" width="12" height="8"/><rect x="144" y="96" width="12" height="4"/><rect x="204" y="95" width="12" height="5"/></g>
+      </svg>
+      <div class="tag">Flow · 3</div>
+      <h3>Where did this word's information come from?</h3>
+      <p><b>Read it:</b> tokens run left to right, layers bottom to top, and every dot is one token's state after one layer. A line from an earlier token up to a later one means attention carried information across at that layer; thicker means more. With <b>Rollout</b> on, the cyan cone traces everything that fed the token on screen, and the bars under the tokens say how much each one contributed.</p>
+      <p><b>Watch for:</b> long late lines back to one earlier word: that is the model copying or recalling it. In "…a country of immigrants. We are a country of", the second " of" takes half of what it reads at layer 9 from the earlier " immigrants". Point at any dot to see what it took in.</p>
+    </div>
+    <div class="view">
+      <svg viewBox="0 0 240 110" role="img" aria-label="Schematic: several token paths, each a line from its embedding through the layers, coloured in two parts">
+        <g stroke-width="1" opacity=".35" fill="none"><path d="M20 90 L60 70 L90 60 L130 40 L170 30 L200 20" stroke="#35e0e6"/><path d="M30 20 L60 50 L95 58 L135 46 L175 38 L210 34" stroke="#a996ff"/><path d="M15 60 L55 62 L92 64 L128 52 L168 44 L196 52" stroke="#35e0e6"/></g>
+        <g fill="none" stroke-linecap="round"><path d="M40 100 L75 80" stroke="#35e0e6" stroke-width="5"/><path d="M75 80 L95 72" stroke="#a996ff" stroke-width="5"/><path d="M95 72 L125 56" stroke="#35e0e6" stroke-width="2.5"/><path d="M125 56 L140 50" stroke="#a996ff" stroke-width="2.5"/><path d="M140 50 L180 30" stroke="#35e0e6" stroke-width="3.5"/><path d="M180 30 L200 14" stroke="#a996ff" stroke-width="4"/></g>
+        <circle cx="40" cy="100" r="3" fill="#a996ff"/><circle cx="200" cy="14" r="4.5" fill="#fff"/>
+        <text x="48" y="104" fill="#e8e6f5" font-family="JetBrains Mono, monospace" font-size="8">embedding</text><text x="150" y="12" fill="#e8e6f5" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="end">last layer</text>
+      </svg>
+      <div class="tag">Hidden states · S</div>
+      <h3>How does each word's meaning move through the model?</h3>
+      <p><b>Read it:</b> this replaces the word cloud with the model's own internal states. Every token is a line: it starts at its embedding and takes one step per layer to its final state. Each step is drawn in two parts, <span style="color:#35e0e6">cyan</span> for what attention changed (information gathered from other tokens) and <span style="color:#a996ff">violet</span> for what the MLP changed (processing on the token itself), and it is thicker the bigger the change. The white dots are every token at the layer being replayed.</p>
+      <p><b>Watch for:</b> tokens that start far apart and end up close: the model has come to treat them alike, as with the countries and capitals of a list. Point at a dot to read its token, layer and guess; click it to put that token on screen. The layout is a projection, and the readout says how much of the states' variation it shows.</p>
+    </div>
+  </div>
+  <p class="check">How sure each view is: the Field's heads, neurons and write strengths, and the hidden states themselves, are the model's own numbers. The River uses the logit lens, a standard but rough readout of the middle layers. The Flow's links multiply real attention by the size of what each token offers, and rollout is an estimate built on them. The hidden-state space is a 3-D projection of real states. Details for each are below.</p>
+</section>
+
+<section id="screen-parts" data-nav="Every part of the screen">
+  <p class="kicker">Piece by piece</p>
+  <h2>What each part of the screen is</h2>
+  <div class="rows">
+    <div class="row real"><div class="tag">Real</div><div><h3>Attention heads (layers × heads grid)</h3><p>The actual attention weights each head assigns to each earlier token, for the token you are looking at. One row per layer, one column per head: 12 × 12 for GPT-2 and MDLM, 6 × 12 for DistilGPT2, 28 × 12 for Qwen2.5-1.5B. In Llama, SmolLM and Qwen models, several heads share one set of keys and values (grouped-query attention), but each head still has its own attention pattern, and that is what is shown. For MDLM, attention runs both ways, so a slot can attend to words on its right.</p></div></div>
+    <div class="row real"><div class="tag">Real</div><div><h3>Head write strength</h3><p>How much each head adds to the model's running state (the residual stream) at this token: the length of what it writes. A head can attend strongly and still write very little.</p></div></div>
+    <div class="row real"><div class="tag">Real</div><div><h3>MLP neurons</h3><p>The actual activation of every neuron in every layer: the number that feeds the layer's output projection. In GPT-2, DistilGPT2 and Pythia it is one projection passed through GELU. In Llama, SmolLM and Qwen it is a gated product (SwiGLU): one projection passed through SiLU, times another. Either way it is the model's own number. MDLM's replay stores attention and neurons at 8-bit precision to save memory, which is enough for colour.</p></div></div>
+    <div class="row real"><div class="tag">Real</div><div><h3>Barcode and neighbour lines</h3><p>In the Embeddings view: the token's actual coordinates (768 for GPT-2, 576 for SmolLM2-135M, 1,536 for Qwen2.5-1.5B), and the tokens closest to it in the full space by cosine similarity. For the built-in models the neighbours were worked out exactly in advance. For models built in your browser they are worked out when you look: a quick 8-bit pass shortlists 64 candidates, which are then rescored from the stored vectors, so they are exact unless a true neighbour missed the shortlist. The most faithful geometry on the page.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>Logit lens column</h3><p>The model's working state partway through, pushed through its final normalisation and output layer to ask "what would you say if you stopped here?". A standard interpretability technique, not something the model does itself. Trustworthy near the top, rough near the bottom. For models with very large vocabularies it is worked out at a spread of depths as the model writes (6 of 29 for Qwen2.5-1.5B), and at any other layer as soon as you point at it or replay it: detail where you look, like the rest of the viewer. Either way it is the same exact readout.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>Attribution (A)</h3><p>How much each head, each MLP and the embedding pushed one word's score (its logit compared with the average word's). The model's running state is a sum of what every part wrote, so with the final normalisation's scale held at this token the score splits exactly into one share per part. It is a standard technique (direct logit attribution) and it counts direct effects only: a head that matters by feeding later layers shows up in those layers, not in its own cell.</p></div></div>
+    <div class="row real"><div class="tag">Real</div><div><h3>Neuron inspector: activations</h3><p>Click an MLP row: each neuron's activation at this token, and across every token of the text so far. These are the model's own numbers.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>Neuron inspector: effects and words</h3><p>A neuron's effect on a word is its activation times how much its output weights point at that word, through the final normalisation. The words it "writes" are read from its output weights alone. Both ignore what later layers do with its output.</p></div></div>
+    <div class="row real"><div class="tag">Real</div><div><h3>Interventions (Rerun)</h3><p>Knock out a head, an MLP or a neuron and run the same text again: what comes out is what the model really does without that part, through every route, direct or via later layers. The one assumption is how a part is removed: its output is set to zero, a blunt change, since in normal use no part ever falls completely silent.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>Comparing runs (Δ A)</h3><p>With a run pinned as A, the Δ A column shows how far this run's internal state is from A's at each layer of the token on screen: the cosine distance between the two 768-or-more-number vectors (0 = pointing the same way). "Parts ways" marks the first layer to reach a quarter of the largest difference, a rule of thumb. Positions are matched by index, which is exact only when both texts have the same number of tokens.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>Features (SAE)</h3><p>Click a layer's label to see its features (GPT-2 small). A sparse autoencoder is a second network, trained by others to rewrite the model's state at one layer as a sum of a few learned directions; it is a model of the model, not part of it. The drawer says how much of this token's state it rebuilds, and what it misses is not shown anywhere. The one-line descriptions come from Neuronpedia and were written by an AI model from each feature's strongest examples: useful guesses, not ground truth. Asking for them contacts neuronpedia.org with only the layer and feature number, never your text.</p></div></div>
+    <div class="row real"><div class="tag">Real</div><div><h3>Distances from one token (D)</h3><p>Pin a token and press D: every token moves to a radius equal to its exact cosine distance from the pinned one, on a disc facing you, with rings at cosine 0.9, 0.7, 0.5, 0.3 and 0.1. The radius is the real geometry, measured in the full space, so this view answers what a map cannot: what is near this token, and how near. The direction around the disc is kept from the cloud so tokens don't jump, and it means little.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>Axes you choose</h3><p>Type two word pairs and the cloud is redrawn with x = a's vector minus b's and y = c's minus d's (made at right angles to x); depth is the direction of greatest remaining spread. Positions along x and y are exact projections of the real vectors: "further right" means exactly "more a-like than b-like". What is lost is everything else, and the line under the layout switch says how little of the variation those three directions hold. Derived, but with axes that mean something.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>Semantic zoom (Z)</h3><p>Re-arranges the tokens under the parafovea with their own clustering, in place. It is still a 3-D layout, so still a map, but one that only has to honour a few thousand tokens, and the line under the layout switch says how much more of their true neighbourhoods it keeps than the global cloud did. The rest of the cloud is unchanged, so positions across the boundary of the region mean nothing.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>3-D positions</h3><p>Clusters (UMAP) or PCA of the vocabulary; switch with C. For the built-in models and popular Hugging Face models the cluster map is computed in advance. For other models your browser shows PCA first and computes the clusters in the background, with the same recipe. Local neighbourhoods are roughly right; global layout is arbitrary.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>Hidden-state space (S)</h3><p>The model's own internal states as a space of their own. The states are real: the residual stream of every token after every layer, the same vectors the logit lens and attribution read. Each is centred and scaled the way the model's normalisation does, then all of this run's states are laid out by one PCA, refitted as the text grows (the first token is drawn but left out of the fit: most models give it outsized values as a resting place for attention, and it would stretch the axes toward itself); the panel's readout says how much of their variation its three axes show (around a third to a half). Each token is a line from its embedding to its last layer. Each step's split between attention (cyan) and the MLP (violet), and its thickness, are exact: the MLP's own output, and the rest of the layer's change, compared with the layer that changed this token most. Positions are a projection: close in 3-D usually means close in the full space, and far always holds less exactly than near.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>Lens river</h3><p>The logit lens for one token at every depth at once, as stacked bands as wide as each word's probability: the same exact readouts as the logit lens column, so the same caveat (rough near the bottom). The eight words that ever do best get a colour, the rest of each depth's top ten is grey, and the empty space above is every other word. The white line is the entropy, shown as "as unsure as choosing among N equally likely words" (e to the entropy). "Settles on" is the first depth from which the top guess stays the same.</p></div></div>
+    <div class="row derived"><div class="tag">Derived</div><div><h3>Attention flow and rollout</h3><p>Tokens left to right, layers bottom to top. A link runs from an earlier token's state to a later one's where attention moves information between them: each head's real attention weight times the length of the value vector it reads (what that token actually offers, after Kobayashi et al., 2020), averaged over the layer's heads, with the links under 3% and beyond each state's top four left out. Weights alone overstate the first token, which most models use as a resting place and which offers almost nothing. Rollout (Abnar and Zuidema, 2020) chains these through the layers, counting each layer's residual connection as half, to estimate what feeds the token on screen. It is an approximation: it ignores the MLPs and how heads combine. The first token only attends to itself, so rollout piles up there; its share is given apart and the shares shown are among the other tokens.</p></div></div>
+    <div class="row illus"><div class="tag">Illustrated</div><div><h3>The purple thought path</h3><p>At each layer, the average map position of the model's top 10 guesses, weighted by how likely each is. A picture of what the model is leaning toward. <b>It is not the model's internal state moving through space.</b> That state is a vector as wide as the token vectors (768 numbers for GPT-2) at every layer, and it doesn't live on the vocabulary map: press S to see the states themselves, in a space of their own. The <b>fly-through</b> (T) moves the camera along this path, so you travel through the picture of what the model is leaning toward; in the hidden-state space (S) it follows the token's real state instead. The guesses labelled along the way are the real logit-lens readouts for that layer.</p></div></div>
+    <div class="row illus"><div class="tag">Illustrated</div><div><h3>Attention arcs</h3><p>Real weights, but averaged over all the heads of the current layer unless you pin one, and anything under 2% is hidden.</p></div></div>
+    <div class="row illus"><div class="tag">Illustrated</div><div><h3>MDLM masked slots</h3><p>A masked slot has no real position; it is drawn at the average of its guesses until it locks onto a word.</p></div></div>
+    <div class="row illus"><div class="tag">Illustrated</div><div><h3>Colours</h3><p>Word, subword, number, punctuation: a rule based on how the token is spelled. The model knows nothing about these categories.</p></div></div>
+  </div>
+</section>
+
+<section id="designs" data-nav="Different designs, same view">
+  <p class="kicker">Which model you are looking at</p>
+  <h2>Different designs, same view</h2>
+  <p class="muted">Every model here is a transformer. Token vectors go in, pass through a stack of layers that each gather information from other tokens (attention) and transform it (the MLP), and come out as guesses for the next word. The view is the same for all of them; these are the differences worth knowing.</p>
+  <div class="rows">
+    <div class="row fam"><div class="tag">GPT-2</div><div><h3>GPT-2 and DistilGPT2</h3><p>Position is a learned vector added to each token at the start. LayerNorm and GELU neurons. The same table reads tokens in and picks the output word.</p></div></div>
+    <div class="row fam"><div class="tag">Llama · Qwen</div><div><h3>Llama 3.2, SmolLM2, Qwen2.5, Qwen3</h3><p>Position is not added as a vector: it rotates each head's queries and keys (rotary embeddings), so attention depends on how far apart two tokens are. RMSNorm, gated SwiGLU neurons and grouped-query attention. Qwen3 also normalises each head's queries and keys. These small models share one table for input and output.</p></div></div>
+    <div class="row fam"><div class="tag">Pythia</div><div><h3>Pythia (GPT-NeoX)</h3><p>Rotary positions on part of each head, and attention and the MLP read the same input side by side instead of one after the other. It has a separate output table.</p></div></div>
+    <div class="row fam"><div class="tag">MDLM</div><div><h3>MDLM, a diffusion model</h3><p>Not a next-word model. The whole answer starts as [MASK] and every slot is filled in over denoising steps, in any order, with attention running both ways. It has a separate output table.</p></div></div>
+    <div class="row fam"><div class="tag">Chat</div><div><h3>Instruct and chat models</h3><p>Your text goes in exactly as typed, without the chat template these models were fine-tuned on. So they continue your text rather than reply like a chatbot, and what you see is the model's raw response to that text.</p></div></div>
+  </div>
+</section>
+
+<section id="notes" data-nav="Two notes for the reader">
+  <p class="kicker">Where people get confused</p>
+  <h2>Two notes for the reader</h2>
+  <div class="confuse">
+    <div><span class="n">01 · "FOVEATED" MEANS YOUR EYES</span><h3>Foveation is how the viewer saves bandwidth, not the model's attention</h3><p>Like a VR headset, the visualizer loads full detail only where <b>you</b> are looking. The model's attention is a separate, real thing, shown in the heads grid, the arcs and the Flow view. They share a metaphor; keep them apart.</p></div>
+    <div><span class="n">02 · "LATENT SPACE" IS PLURAL</span><h3>The cloud is one latent space. The model has more.</h3><p>The cloud is the <b>token embedding space</b>: a fixed table and the model's entry point. In GPT-2 and most models here the same table also picks the output word, which is why plotting predictions on it makes sense. MDLM and Pythia use separate input and output tables, so placing their guesses on the input map is an approximation. The <b>hidden states</b> inside the model are latent spaces too, arguably the more interesting ones. Press S in the forward pass to see them as a space of their own: every token's state at every layer, joined into the path each token takes. The field, the lens river and the attention flow show what reads and writes them.</p></div>
+  </div>
+</section>
+
+<section id="observability" data-nav="Observability isn't perfect">
+  <p class="kicker">If someone asks "so is it real?"</p>
+  <h2>Observability matters a lot - but isn't perfect</h2>
+  <p class="say">The model and every number it produces are real. The cloud is an honest but distorted map of the model's vocabulary space. The purple path is a picture of what it is leaning toward, not a literal trajectory; press S for the real one, each token's internal state layer by layer.</p>
+</section>
+
+<section class="book-intro" id="handbook">
+  <p class="kicker">The handbook</p>
+  <h2>A course in reading a language model</h2>
+  <p class="lede">The sections above say what is real. This handbook says how to use it. It is written as a short course: Part I introduces the ideas the rest depends on, Parts II and III take each view in turn, and Part IV covers the models and the machinery behind them. Each chapter states what the view is for, what is on the screen, how to operate it, how to read it, a worked example, and its limits.</p>
+  <p class="muted">No prior knowledge of machine learning is assumed, but the treatment is exact: where a quantity is shown, the chapter gives the formula that produces it. Readers who know transformers may skip Part I.</p>
+  <nav class="toc" aria-label="Contents">
+    <h3>Part I · Foundations</h3>
+    <ol start="1">
+      <li><a href="#ch-models">How a language model computes</a></li>
+      <li><a href="#ch-spaces">Latent spaces, and how they can be drawn</a></li>
+    </ol>
+    <h3>Part II · The embedding space</h3>
+    <ol start="3">
+      <li><a href="#ch-cloud">The cloud</a></li>
+      <li><a href="#ch-fovea">Foveated viewing</a></li>
+      <li><a href="#ch-inspect">Inspecting a token</a></li>
+      <li><a href="#ch-relayout">Three ways to redraw the cloud</a></li>
+    </ol>
+    <h3>Part III · The forward pass</h3>
+    <ol start="7">
+      <li><a href="#ch-run">Running a query</a></li>
+      <li><a href="#ch-field">The field</a></li>
+      <li><a href="#ch-scene">The scene during a pass</a></li>
+      <li><a href="#ch-attr">Attribution</a></li>
+      <li><a href="#ch-neurons">Neurons and features</a></li>
+      <li><a href="#ch-experiments">Experiments: interventions and comparisons</a></li>
+      <li><a href="#ch-river">The lens river</a></li>
+      <li><a href="#ch-flow">Attention flow</a></li>
+      <li><a href="#ch-hidden">The hidden-state space</a></li>
+    </ol>
+    <h3>Part IV · Models and machinery</h3>
+    <ol start="16">
+      <li><a href="#ch-choose">Choosing a model, and where it runs</a></li>
+      <li><a href="#ch-diffusion">A different kind of model: diffusion</a></li>
+      <li><a href="#ch-kd">Attention without a decoder: a KnowDrive store</a></li>
+      <li><a href="#ch-glm">A 744-billion-parameter model, streamed from a drive</a></li>
+      <li><a href="#ch-checks">How the numbers are checked</a></li>
+    </ol>
+    <h3>Appendices</h3>
+    <ol type="A">
+      <li><a href="#app-keys">Keyboard reference</a></li>
+      <li><a href="#app-gloss">Glossary of terms</a></li>
+    </ol>
+  </nav>
+</section>
+
+<section class="part" id="part-1">
+  <p class="kicker">Part I · Foundations</p>
+
+  <article class="ch" id="ch-models">
+    <p class="kicker">Chapter 1</p>
+    <h2>How a language model computes</h2>
+    <p class="goal">A language model is a function that reads a sequence of tokens and returns, for the next position, a probability for every token in its vocabulary. Everything this tool shows is an intermediate quantity of that function.</p>
+
+    <h3>1.1 Tokens and the vocabulary</h3>
+    <p>Text is first cut into <b>tokens</b>: whole words, pieces of words, punctuation and spaces, according to a fixed table learned before training. GPT-2's table has 50,257 entries; Qwen2.5's has 151,936. A token is therefore an integer between 0 and V − 1, where V is the size of the <b>vocabulary</b>. Note that the leading space belongs to the token: " Paris" (with a space) and "Paris" are different tokens, which is why the tool sometimes writes a space as ␣.</p>
+
+    <h3>1.2 The embedding</h3>
+    <p>Each token is turned into a vector by looking up a row of the <b>embedding matrix</b> W<sub>E</sub>, which has V rows and d columns. The number d is the model's <b>width</b>: 768 for GPT-2, 896 for Qwen2.5-0.5B, 2,048 for Qwen2.5-3B. The row is the token's starting representation; GPT-2 also adds a second learned vector that encodes where in the text the token sits; Llama, Qwen and Pythia instead encode position inside attention, by rotating queries and keys (rotary embeddings).</p>
+
+    <h3>1.3 The residual stream</h3>
+    <p>For every position the model keeps one vector of width d, the <b>residual stream</b>, and passes it through L identical-looking <b>layers</b> (12 in GPT-2, 36 in Qwen2.5-3B). Each layer reads the stream and <i>adds</i> its result to it, never overwriting it:</p>
+    <p class="eq">x<sub>ℓ+1</sub> = x<sub>ℓ</sub> + Attn<sub>ℓ</sub>(norm(x<sub>ℓ</sub>)) + MLP<sub>ℓ</sub>(norm(x<sub>ℓ</sub> + Attn<sub>ℓ</sub>(…)))</p>
+    <p class="eq-note">Sequential form (GPT-2, Llama, Qwen). Pythia evaluates attention and MLP side by side on the same input and adds both.</p>
+    <p>The sequence x<sub>0</sub>, x<sub>1</sub>, …, x<sub>L</sub> for one position is that token's sequence of <b>hidden states</b>. Because every part only adds to the stream, the final state is literally the sum of the embedding and of everything every part ever wrote. Chapters 10 and 15 depend on this fact.</p>
+
+    <h3>1.4 Attention</h3>
+    <p>Attention is the only place where positions exchange information. A layer has several <b>heads</b> (12 per layer in GPT-2). For the position being computed, i, a head forms a <b>query</b> q<sub>i</sub>, and for every earlier position j a <b>key</b> k<sub>j</sub> and a <b>value</b> v<sub>j</sub>, each a linear function of the normalised stream. The head's <b>attention weights</b> are</p>
+    <p class="eq">a<sub>ij</sub> = softmax<sub>j</sub>( q<sub>i</sub> · k<sub>j</sub> / √d<sub>h</sub> ),&nbsp;&nbsp; j ≤ i</p>
+    <p>a probability distribution over the earlier positions, and the head writes W<sub>O</sub> Σ<sub>j</sub> a<sub>ij</sub> v<sub>j</sub> into the stream. A weight says <i>where the head looks</i>; the value says <i>what it finds there</i>. Both matter, and Chapter 14 shows why confusing them misleads. In grouped-query models (Llama, Qwen) several heads share one set of keys and values but keep their own weights. Models in this tool are <b>causal</b>: position i can only attend to j ≤ i. The diffusion model of Chapter 17 is the exception.</p>
+
+    <h3>1.5 The MLP</h3>
+    <p>The second part of each layer, the <b>MLP</b> (multi-layer perceptron, or feed-forward block), works on each position separately. It projects the stream up to a wider space (3,072 dimensions in GPT-2), applies a nonlinearity, and projects back down:</p>
+    <p class="eq">h = φ(W<sub>in</sub> x),&nbsp;&nbsp; MLP(x) = W<sub>out</sub> h</p>
+    <p class="eq-note">φ is GELU in GPT-2 and Pythia. Llama and Qwen use SwiGLU: h = SiLU(W<sub>gate</sub> x) ⊙ (W<sub>up</sub> x).</p>
+    <p>Each component h<sub>k</sub> is a <b>neuron</b>, and its value is the neuron's <b>activation</b>. Neuron k always writes along the same direction, column k of W<sub>out</sub>, scaled by its activation. Much of what a model "knows" about words is thought to be stored in these layers.</p>
+
+    <h3>1.6 Normalisation</h3>
+    <p>Before each part reads the stream, the stream is <b>normalised</b>: LayerNorm subtracts the vector's mean and divides by its standard deviation; RMSNorm (Llama, Qwen) only divides by the root mean square. Both then multiply by learned weights. Normalisation matters for interpretation because it means a part reacts to the <i>direction</i> of the stream far more than to its size.</p>
+
+    <h3>1.7 From the last state to a prediction</h3>
+    <p>After the last layer, the final state is normalised once more and multiplied by the <b>unembedding</b> matrix W<sub>U</sub> (V rows), giving one score, a <b>logit</b>, per token. The <b>softmax</b> turns logits into probabilities:</p>
+    <p class="eq">p(w) = exp(z<sub>w</sub>) / Σ<sub>v</sub> exp(z<sub>v</sub>),&nbsp;&nbsp; z = W<sub>U</sub> · norm(x<sub>L</sub>)</p>
+    <p>Only differences between logits matter: adding the same constant to all of them changes nothing. Many small models reuse W<sub>E</sub> as W<sub>U</sub> (<b>tied</b> embeddings), which is why predictions can be drawn on the embedding cloud. To write text, the model picks the most probable token (<b>greedy</b> decoding) or draws one at random in proportion to the probabilities (<b>sampling</b>), appends it, and repeats. Keys and values of earlier positions are kept (the <b>KV cache</b>), so each new token costs one pass through the layers.</p>
+
+    <h3>1.8 Uncertainty</h3>
+    <p>How spread out a distribution is can be measured by its <b>entropy</b>, H = −Σ p(w) log p(w). The tool usually reports e<sup>H</sup> instead, the <b>effective number of choices</b>: a distribution with e<sup>H</sup> = 3 is as uncertain as a fair choice among three equally likely words.</p>
+
+    <div class="box ex"><b>In this tool</b><p>The embedding (1.2) is the cloud of Part II. The residual stream at every depth (1.3) is recorded for every token and drawn directly in Chapter 15. Attention weights (1.4) appear in the field's head grid, the arcs, and the flow. MLP activations (1.5) fill the field's neuron strips. The prediction (1.7) and its uncertainty (1.8) appear at every depth through the logit lens.</p></div>
+  </article>
+
+  <article class="ch" id="ch-spaces">
+    <p class="kicker">Chapter 2</p>
+    <h2>Latent spaces, and how they can be drawn</h2>
+    <p class="goal">A latent space is a vector space in which a model represents things. It has hundreds or thousands of dimensions, and a screen has two. Every picture of one is therefore a choice about what to keep and what to give up.</p>
+
+    <h3>2.1 Two kinds of latent space</h3>
+    <dl class="defs">
+      <div><dt>The embedding space</dt><dd>The V rows of W<sub>E</sub>: one fixed point per token, the same for every text. This is the cloud of Part II.</dd></div>
+      <div><dt>The hidden-state spaces</dt><dd>The residual stream after each layer: one point per position per depth, different for every text, because each state depends on everything before it. These are drawn in Chapter 15 and read indirectly by most of Part III.</dd></div>
+    </dl>
+
+    <h3>2.2 Measuring closeness</h3>
+    <p>Two vectors are compared by the angle between them, through <b>cosine similarity</b></p>
+    <p class="eq">cos(a, b) = a · b / (‖a‖ ‖b‖)</p>
+    <p>which is 1 for vectors pointing the same way, 0 for perpendicular ones and −1 for opposite ones. <b>Cosine distance</b> is 1 − cos. Angles are the natural measure here because the normalisations of §1.6 make the model attend to direction rather than length. A token's <b>nearest neighbours</b> are the tokens with the highest cosine to it, computed over all d coordinates.</p>
+
+    <h3>2.3 Why every picture distorts</h3>
+    <p>A 768-dimensional cloud cannot be placed in three dimensions without changing some distances. In high dimensions almost all pairs of points are nearly perpendicular, and a point can have many neighbours that are not neighbours of one another; no 3-D arrangement can honour all such relations at once. The tool offers several drawings, each with a different promise:</p>
+    <dl class="defs">
+      <div><dt>PCA (principal component analysis)</dt><dd>Projects onto the three directions along which the points vary most. Linear and faithful in what it shows, but it shows little: for GPT-2's vocabulary those three directions hold 3.4% of the variation.</dd></div>
+      <div><dt>UMAP ("Clusters")</dt><dd>A nonlinear method that tries to keep each point's nearest neighbours nearby. Local groups are roughly right; distances between groups, directions and the overall shape carry little meaning.</dd></div>
+      <div><dt>Chosen axes</dt><dd>Two directions you define from word pairs (§6.3). Exact along those directions and silent about everything else.</dd></div>
+      <div><dt>Radial distances</dt><dd>Every token at its exact cosine distance from one chosen token (§6.2). Exact in one respect, distance from that token, and arbitrary in angle.</dd></div>
+    </dl>
+
+    <h3>2.4 Map and territory</h3>
+    <p>The tool keeps the drawing (the <i>map</i>) separate from measurements made in the full space (the <i>territory</i>). Neighbour lists, neighbour lines, cosine values and every number in Part III are territory. Positions in a 3-D view are map. When the two disagree, for example a neighbour line that crosses the whole cloud, the line is right and the position is the distortion.</p>
+
+    <h3>2.5 Reading the fidelity line</h3>
+    <p>Under the layout switch, a line reports how much of the territory the current map keeps, measured live for the model on screen:</p>
+    <ul>
+      <li><b>Same region</b>: how often a token's 15 true nearest neighbours fall within its nearest 1% of the cloud as drawn. This asks the question the eye asks of a map: are related tokens drawn in the same area?</li>
+      <li><b>Near/far agreement</b>: for sample tokens, partners at true ranks 1, 2, 3, 5, 8 … up to half the vocabulary, and the rank correlation (Spearman) between true rank and drawn distance. 1 would mean the map orders near and far perfectly; 0, not at all.</li>
+      <li>For PCA, the share of the variation its three directions hold. The ⓘ beside the line gives the strict figure, the share of exact 15-nearest neighbours preserved, as a caveat.</li>
+    </ul>
+    <div class="box limit"><b>Limits</b><p>No drawing is the space. Use the drawing to navigate and the measurements to conclude.</p></div>
+  </article>
+</section>
+<section class="part" id="part-2">
+  <p class="kicker">Part II · The embedding space</p>
+
+  <article class="ch" id="ch-cloud">
+    <p class="kicker">Chapter 3</p>
+    <h2>The cloud</h2>
+    <p class="goal">The <span class="ui">Embeddings</span> view draws every token of the vocabulary as one point: the rows of W<sub>E</sub> (§1.2), placed in three dimensions by one of the methods of §2.3. It is the model's first latent space, the same for every text.</p>
+
+    <h3>3.1 What is on the screen</h3>
+    <ul>
+      <li><b>Points.</b> One per token: 50,257 for GPT-2, 151,936 for the Qwen models. Brightness is reduced where many points overlap, so dense regions read as texture rather than as a solid blot.</li>
+      <li><b>Colour.</b> A rule based on spelling: whole word, word piece, number, punctuation, whitespace, other scripts and bytes. The legend at the lower left names them. The model knows nothing of these categories; they are there to help the eye.</li>
+      <li><b>Header.</b> The model's name and size, the <span class="ui">Embeddings / Forward pass</span> switch, the layout switch (<span class="ui">Clusters · PCA · Axes</span>), a brightness slider, and the fidelity line of §2.5.</li>
+      <li><b>Inspector</b> (right). The token under your gaze, described in Chapter 5.</li>
+      <li><b>Dock</b> (lower left). The legend, the <span class="ui">Find a token</span> box, <span class="ui">Settings</span>, and a key reminder.</li>
+    </ul>
+
+    <h3>3.2 Moving around</h3>
+    <p>Drag to orbit, use the wheel (or pinch) to zoom, and drag with the right button or with <kbd>Shift</kbd> held to pan. <kbd>H</kbd> returns to the starting view. When nothing is touched for a while the gaze wanders on its own (<span class="ui">Wander when idle</span> in Settings), which is a quick way to sample the vocabulary.</p>
+
+    <h3>3.3 Layouts</h3>
+    <p><span class="ui">Clusters</span> (UMAP) is the default; <span class="ui">PCA</span> is the linear alternative; <kbd>C</kbd> switches between them and the points glide from one to the other, so you can follow a group across the change. For the built-in models and popular Hugging Face models the cluster layout was computed in advance; for others the tool shows PCA first and computes the clusters in the background, about a minute for GPT-2's vocabulary, then morphs. <span class="ui">Axes</span> is treated in §6.3.</p>
+    <p>The <span class="ui">◐</span> slider sets the brightness of the dots, from faint (useful when labels matter) to bright (useful for seeing structure). It is remembered between visits.</p>
+
+    <h3>3.4 How to read it</h3>
+    <p>Read the cloud as a map of neighbourhoods. Groups of related tokens, such as numbers, years, names, code fragments, or a language's word pieces, sit together in the clusters layout, and the fidelity line tells you how often that holds for this model. Do not read meaning into distances between groups or into the cloud's overall shape (§2.3).</p>
+    <div class="box try"><b>Try this</b><p>On GPT-2, switch between <span class="ui">Clusters</span> and <span class="ui">PCA</span> with <kbd>C</kbd> and compare the fidelity lines. In PCA most tokens collapse into one blob, because three directions hold only a few per cent of the variation; the clusters layout separates them, at the price of arbitrary global placement.</p></div>
+  </article>
+
+  <article class="ch" id="ch-fovea">
+    <p class="kicker">Chapter 4</p>
+    <h2>Foveated viewing</h2>
+    <p class="goal">A human eye sees sharply only at the centre of gaze, the fovea, and coarsely around it. The tool works the same way: full detail where you look, a summary elsewhere. This is how a large vocabulary can be explored in a browser without loading all of it.</p>
+
+    <h3>4.1 Three regions</h3>
+    <dl class="defs">
+      <div><dt>Fovea</dt><dd>A small circle around the pointer (by default 120 pixels in radius, about 3° of visual angle at a normal viewing distance). Here the tool loads the tokens' actual coordinates, labels them, draws their true nearest neighbours as lines, and can re-lay them out (§4.3).</dd></div>
+      <div><dt>Parafovea</dt><dd>A wider ring (by default 330 pixels). Points are brighter, thinned by a fixed per-token sample that falls off with distance, so the area stays legible.</dd></div>
+      <div><dt>Periphery</dt><dd>Everything else: positions only, as faint points.</dd></div>
+    </dl>
+    <p>Press <kbd>R</kbd> to show or hide the two rings; the fovea's ring is labelled with its size in degrees. Both radii can be changed under <span class="ui">Settings</span>. <kbd>F</kbd> turns foveation off altogether, which is useful as a baseline: the whole cloud is then drawn uniformly and no coordinates load.</p>
+
+    <h3>4.2 What loads, and when</h3>
+    <p>A token's coordinates (d numbers each) are stored in tiles, groups of nearby tokens that occupy one contiguous range of the data file. While you look somewhere, the tiles under the fovea are fetched, nearest the gaze first, within a bandwidth budget, and kept in a cache of fixed size; tiles nobody has looked at recently are evicted. The statistics at the top right (<span class="ui">In fovea</span>, <span class="ui">Streaming</span>, <span class="ui">Cache</span>, <span class="ui">Tiles</span>) show this happening. In practice you only need to know one thing: <i>pause on a region and its detail arrives</i>.</p>
+
+    <h3>4.3 The lens</h3>
+    <p>Inside the fovea the tool can re-arrange the loaded tokens by a <b>local PCA</b>: a principal component analysis of just those rows, which is far more faithful to their mutual arrangement than any global layout. <kbd>L</kbd> turns this lens on and off. The fovea's label then reports the share of the local variation its two directions show. Points under the fovea are dimmed so the re-arranged ones stand out.</p>
+    <div class="box try"><b>Try this</b><p>Move the gaze slowly across a cluster with <kbd>L</kbd> on, then off. With the lens, tokens inside the fovea spread out according to their own geometry; without it, they keep their global positions, which may stack unrelated tokens on top of one another.</p></div>
+    <div class="box limit"><b>Limits</b><p>Foveation is how the viewer saves bandwidth and attention. It has nothing to do with the model's attention mechanism (§1.4), despite the shared metaphor.</p></div>
+  </article>
+
+  <article class="ch" id="ch-inspect">
+    <p class="kicker">Chapter 5</p>
+    <h2>Inspecting a token</h2>
+    <p class="goal">The inspector reports one token exactly: its identity, its full vector, and its true nearest neighbours.</p>
+
+    <h3>5.1 Reading the inspector</h3>
+    <ul>
+      <li><b>The token</b> in quotation marks, with a leading space shown as ␣ and a line break as ↵, and its spelling category.</li>
+      <li><b>Token id</b>, the integer of §1.1, and <b>‖v‖</b>, the length of its embedding vector. Rare and unusual tokens often have atypical lengths.</li>
+      <li><b>The barcode</b>: all d coordinates side by side, one column each, cyan for positive and violet for negative, brighter for larger magnitude (scaled to the token's largest coordinate, which is named underneath). The barcode appears once the token's tile has loaded; keep looking and it arrives.</li>
+      <li><b>Nearest in the full space</b>: the closest tokens by cosine similarity (§2.2), measured over all d coordinates, with the similarity as a number and a bar.</li>
+    </ul>
+
+    <h3>5.2 Pinning and finding</h3>
+    <p>The inspector follows your gaze until you click a point, which <b>pins</b> it (the pill changes from <span class="ui">Following gaze</span> to <span class="ui">Pinned</span>); <kbd>Esc</kbd> unpins. Clicking a neighbour in the list pins that neighbour and flies to it, so you can walk the neighbourhood graph token by token. To jump to a word, type it in <span class="ui">Find a token</span> (or press <kbd>/</kbd>): the tool tries it with and without a leading space and in lower case, and flies to the first match.</p>
+
+    <div class="box ex"><b>Worked example</b><p>On GPT-2, find "king" and read its neighbour list: the closest tokens in the full space, with their cosine similarities. Now watch the neighbour lines in the scene: several reach far across the cloud. Those tokens are near in the full space and far on the map, which is the distortion of §2.3 made visible. Click one to fly there and continue the walk.</p></div>
+    <div class="box limit"><b>Limits</b><p>For the built-in models the neighbours were computed exactly in advance. For models built in your browser they are computed on demand: a fast 8-bit pass shortlists 64 candidates, which are then scored exactly, so a true neighbour is missed only if it failed the shortlist.</p></div>
+  </article>
+
+  <article class="ch" id="ch-relayout">
+    <p class="kicker">Chapter 6</p>
+    <h2>Three ways to redraw the cloud</h2>
+    <p class="goal">A single global layout cannot be faithful everywhere. These three tools trade the whole picture for an exact or more faithful one about something specific.</p>
+
+    <h3>6.1 Semantic zoom: re-arranging one region</h3>
+    <p>Zoom in until the parafovea holds a few hundred to a few thousand tokens, then press <kbd>Z</kbd> or <span class="ui">Re-arrange this region</span>. The tool runs the clustering again on just those tokens, places the result where the region was, rotated to match the old arrangement, and morphs to it; the rest of the cloud stays as context. The fidelity line then compares how much of the region's true neighbourhoods the old and the new arrangement keep. Press <kbd>Z</kbd> again, or switch layouts, to return.</p>
+    <div class="box ex"><b>Worked example</b><p>On GPT-2, a region re-arranged this way kept 26% of its tokens' true 15 nearest neighbours, against 8.9% in the global layout: three times as faithful, because the layout only has to honour a few thousand tokens.</p></div>
+    <div class="box limit"><b>Limits</b><p>It is still a map. Positions across the boundary of the region, between re-arranged tokens and the rest of the cloud, mean nothing.</p></div>
+
+    <h3>6.2 Distances from one token</h3>
+    <p>Pin a token, then press <kbd>D</kbd> or <span class="ui">Distances from here</span>. Every token moves onto a disc facing you, at a radius equal to its exact cosine distance from the pinned token, with rings at cosine 0.9, 0.7, 0.5, 0.3 and 0.1. The radius is measured in the full space, so this view answers exactly a question no map can: <i>what is near this token, and how near?</i> Each token keeps the bearing it had on screen, so you can follow it; that angle carries no meaning. <kbd>D</kbd> or <kbd>Esc</kbd> returns.</p>
+
+    <h3>6.3 Axes you choose</h3>
+    <p>Choose <span class="ui">Axes</span> and type two word pairs, for example "king − queen" and "Paris − France", then <span class="ui">Lay out</span>. The horizontal axis is the difference of the first pair's vectors, the vertical axis the difference of the second pair's, made perpendicular to the first; depth is the direction of greatest remaining spread:</p>
+    <p class="eq">x(t) = e(t) · (e(a) − e(b)),&nbsp;&nbsp; y(t) = e(t) · (e(c) − e(d))<sub>⊥x</sub></p>
+    <p>Positions along x and y are exact projections, so "further right" means precisely "more like a than like b". The axes are labelled at their ends, and the fidelity line reports how much of the variation each holds, typically very little, which is the honest price of an interpretable picture. Only words that are a single token can be used.</p>
+    <div class="box try"><b>Try this</b><p>Lay out "king − queen" against "man − woman". If the vocabulary encodes a gender direction, gendered words line up along a diagonal; words without gender sit near the origin of both axes.</p></div>
+  </article>
+</section>
+<section class="part" id="part-3">
+  <p class="kicker">Part III · The forward pass</p>
+
+  <article class="ch" id="ch-run">
+    <p class="kicker">Chapter 7</p>
+    <h2>Running a query</h2>
+    <p class="goal">The <span class="ui">Forward pass</span> view runs the model on your text, records every intermediate quantity of Chapter 1 for every token, and replays the computation layer by layer at a speed you choose.</p>
+
+    <h3>7.1 Starting a run</h3>
+    <p>Switch views with the tab or <kbd>M</kbd>. Type into the query box and press <kbd>Enter</kbd> (or pick one of the examples). The first time, the model's weights load into your browser; the status line under the controls says how far it has got and, once ready, where the model runs and how closely it was checked (Chapter 20). The model then reads your text token by token and writes a continuation.</p>
+    <dl class="defs">
+      <div><dt><span class="ui">Tokens</span></dt><dd>How many tokens to write after your text (16 by default).</dd></div>
+      <div><dt><span class="ui">Greedy / Sample</span></dt><dd>Greedy always writes the most probable token, so a run can be repeated exactly. Sample draws from the ten most probable at temperature 0.8, so runs differ.</dd></div>
+      <div><dt><span class="ui">Speed</span></dt><dd>How long each layer is shown during the replay: <span class="ui">Live</span> (no replay), 160 ms, 0.5 s or 1.5 s per layer. The model itself always runs at full speed; only the replay is slowed.</dd></div>
+      <div><dt><span class="ui">Play / Pause</span>, <span class="ui">Step layer</span></dt><dd>Pause the replay, or advance it one layer at a time. When a run has finished, Play and Step continue it by another <span class="ui">Tokens</span>' worth.</dd></div>
+    </dl>
+
+    <h3>7.2 The panel and the chips</h3>
+    <p>The panel at the bottom holds the controls (left) and the main display (right). Above the display is a row of <b>chips</b>, one per token, your text in white and the model's in violet. The outlined chip is the token on screen; click any chip to inspect that position (every token's recordings are kept), and click it again to return to the latest. Next to the chips, the tabs <span class="ui">Field · River · Flow</span> (keys <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>) choose the display, and a one-line readout summarises what it shows. <kbd>P</kbd> hides the panel to watch the scene alone; drag its top edge to resize it.</p>
+    <p>The answer appears under the query box as it forms: your text dim, the model's bright, and, while a token is being replayed, its current guess at the layer on screen.</p>
+  </article>
+
+  <article class="ch" id="ch-field">
+    <p class="kicker">Chapter 8</p>
+    <h2>The field</h2>
+    <p class="goal">The field shows the whole network for one token at once: every head, every neuron and the model's guess at every depth. It is the most complete view, and the place most investigations start.</p>
+
+    <h3>8.1 Layout</h3>
+    <p>Each row is one depth. The bottom row, <span class="ui">EMB</span>, is the embedding; above it <span class="ui">L0</span>, <span class="ui">L1</span>, … up to the last layer. During a replay the current depth is highlighted and rows not yet reached are faint. Each row has three parts, from left to right.</p>
+
+    <h3>8.2 Heads</h3>
+    <p>One square per attention head. Its <b>fill</b> is the head's <b>write strength</b>, the length of the vector it adds to the stream, relative to the strongest head in that layer. Inside it, a small <b>comb</b> shows how much attention the head pays to each of the eight most recent tokens, newest on the right. Point at a head to open a loupe listing the six tokens it attends to most, with their weights and positions; click to pin the loupe.</p>
+    <p>Reading: strength and attention are different things. A head can attend sharply and write almost nothing, or spread its attention and write a great deal. Many heads put most of their attention on the very first token, a resting place known as an <b>attention sink</b>; that is normal and usually means the head has nothing to do at this position.</p>
+
+    <h3>8.3 MLP</h3>
+    <p>A strip of every neuron in the layer's MLP (3,072 per layer in GPT-2), as eight rows of pixels: cyan for positive activation, violet for negative, brighter for larger. Click a strip to open the neuron inspector (Chapter 11).</p>
+
+    <h3>8.4 Logit lens</h3>
+    <p>The right-hand column shows, at each depth, the token the model would predict if it stopped there, and its probability. This is the <b>logit lens</b>: the stream at depth ℓ is passed through the final normalisation and unembedding of §1.7 as if it were the last layer,</p>
+    <p class="eq">p<sub>ℓ</sub> = softmax( W<sub>U</sub> · norm(x<sub>ℓ</sub>) )</p>
+    <p>For models with very large vocabularies running on the CPU, the lens is computed at a spread of depths as the model writes and at any other depth as soon as you point at its row (three faint dots mark a row not yet read); on the GPU every depth is read for every token. Click a row of the lens to explain that depth's guess (Chapter 10). Clicking a layer's label opens its features (Chapter 11) where those are available.</p>
+
+    <h3>8.5 How to read the field</h3>
+    <p>Read it bottom to top, as the computation runs. A common pattern: near the bottom the lens echoes the input token or produces fragments; in the middle layers plausible continuations appear; in the top layers one of them wins and its probability rises. Heads that light up as the answer forms, and MLP strips that change sharply, are where to look next.</p>
+    <div class="box ex"><b>Worked example</b><p>On GPT-2, run "The capital of France is Paris. The capital of Germany is" and look at the last token, " is". The lens column shows fragments and function words through the lower half (" not", " now", " also"), then " Paris" briefly after layer 7, then " Berlin" at 78% after layer 8 and 82% after layer 9, easing to 26% at the output as other continuations compete. Point at the strongest head of layers 8 and 9: their loupes show 88% and 94% of their attention on " Germany". The answer appears exactly where heads fetch the country.</p></div>
+    <div class="box limit"><b>Limits</b><p>The heads, the neurons and the write strengths are the model's own numbers. The logit lens is a standard technique, not something the model does: middle layers were not trained to be read through the final layers, so the lens is trustworthy near the top and rough near the bottom.</p></div>
+  </article>
+
+  <article class="ch" id="ch-scene">
+    <p class="kicker">Chapter 9</p>
+    <h2>The scene during a pass</h2>
+    <p class="goal">While the panel shows the network, the 3-D scene above it places the run on the embedding cloud: where the tokens are, what the model is leaning toward, and whom it attends to.</p>
+
+    <h3>9.1 What is drawn</h3>
+    <ul>
+      <li><b>The sequence.</b> The text's tokens as labelled markers joined by a faint line, the token on screen in cyan, and the token about to be written ringed and marked "predicted".</li>
+      <li><b>The thought path</b> (violet). At each depth reached so far, the probability-weighted average position of the logit lens's top ten guesses. It travels from the input token toward the word the model settles on.</li>
+      <li><b>Attention arcs</b> (cyan). From the current depth back to every earlier token, as thick as the attention paid to it, averaged over the layer's heads, or for one head if you have pinned its loupe. Arcs under 2% are omitted.</li>
+    </ul>
+
+    <h3>9.2 Fly-through</h3>
+    <p>Press <kbd>T</kbd> or <span class="ui">Fly-through</span> and the camera follows the thought path instead of orbiting: behind it, layer by layer, naming the guesses it passes with their probabilities. Drag or zoom at any time; the flight resumes after a moment. With the hidden-state space on (Chapter 15), the camera follows the token's actual state instead.</p>
+    <div class="box limit"><b>Limits</b><p>The thought path is an illustration: an average of positions on a map, not the model's state. The state is a d-dimensional vector that does not live on the vocabulary map; Chapter 15 draws it directly.</p></div>
+  </article>
+
+  <article class="ch" id="ch-attr">
+    <p class="kicker">Chapter 10</p>
+    <h2>Attribution</h2>
+    <p class="goal">Attribution asks which parts of the network pushed the model toward a word. Because the final state is a sum (§1.3), the word's score splits exactly into one share per part.</p>
+
+    <h3>10.1 The decomposition</h3>
+    <p>The <b>score</b> of a word w is its logit minus the average word's logit, which is what actually sets its odds (§1.7). Write the final state as the sum of what each part wrote, x<sub>L</sub> = e + Σ<sub>heads</sub> o<sub>h</sub> + Σ<sub>layers</sub> m<sub>ℓ</sub> + biases. Holding the final normalisation's scale at its value for this token, the score is linear in x<sub>L</sub>, so</p>
+    <p class="eq">score(w) = Σ<sub>parts</sub> (1/s) · ( u<sub>w</sub> − ū ) ⊙ γ · c<sub>part</sub></p>
+    <p class="eq-note">u<sub>w</sub>: the word's unembedding row; ū: the average row; γ: the final norm's weights; s: its scale at this token; c<sub>part</sub>: what the part wrote (for LayerNorm, centred). This is direct logit attribution.</p>
+
+    <h3>10.2 Using it</h3>
+    <p>Press <kbd>A</kbd> or <span class="ui">Attribution</span>. The field recolours: each head <span style="color:var(--cyan)">cyan</span> where it pushed toward the word and <span style="color:var(--amber)">amber</span> where it pushed against it, stronger for larger shares; each MLP strip gets a frame of the same colours; a <span class="ui">PUSH</span> column adds up each layer, with the total score at its head. The word explained is the one written next. To explain another, click a row of the logit lens (that depth's guess), or type any word into <span class="ui">Explain</span>: "why not Paris?" becomes an exact answer about " Paris".</p>
+
+    <h3>10.3 Reading it</h3>
+    <p>Large pushes usually come from a handful of late heads and MLPs. Negative pushes matter as much as positive ones: they are often the parts that suppress the word the model would otherwise repeat. The share of the embedding itself, and of biases (<i>rest</i>), are reported too, so the shares add up to the score.</p>
+    <div class="box limit"><b>Limits</b><p>Only direct effects are counted. A head that matters because it feeds later layers shows up in those layers, not in its own cell. Interventions (Chapter 12) measure total effects.</p></div>
+  </article>
+
+  <article class="ch" id="ch-neurons">
+    <p class="kicker">Chapter 11</p>
+    <h2>Neurons and features</h2>
+    <p class="goal">Two ways to look inside a layer: its neurons, which are the model's own units, and its features, a learned dictionary that tends to be easier to name.</p>
+
+    <h3>11.1 The neuron inspector</h3>
+    <p>Click a layer's MLP strip. The drawer lists the neurons firing hardest at this token, and, when a word is being explained, the neurons pushing toward it and against it: a neuron's <b>direct effect</b> is its activation times how much its output direction points at the word through the final normalisation. Pick a neuron to see two further things:</p>
+    <ul>
+      <li><b>Where it fires</b>: its activation at every token of the text so far, as background colour. Neurons respond to patterns (a kind of word, a position, a topic), so reading across the text is the quickest way to guess what one detects. Many respond to several unrelated things.</li>
+      <li><b>What it writes</b>: the words its output direction pushes up and down most, read from its weights.</li>
+    </ul>
+    <p>The drawer also offers <span class="ui">Knock out</span> for the neuron or the whole MLP (Chapter 12).</p>
+    <div class="box ex"><b>Worked example</b><p>In GPT-2, layer 9's neuron 1806 writes toward " an", " a" and " another", and fires on "We are" just before an article: a neuron that prepares the next word to be an article.</p></div>
+
+    <h3>11.2 Features</h3>
+    <p>A single neuron often responds to several unrelated things. A <b>sparse autoencoder</b> (SAE) is a second, small network trained to rewrite the stream at one depth as a sum of a few <b>features</b> from a large dictionary (24,576 for GPT-2 small); each feature tends to mean one thing. Click a layer's label (<span class="ui">EMB</span>, <span class="ui">L0</span>, …) to open its features at the token on screen. The first time, that layer's dictionary (about 150 MB) streams from Hugging Face and is kept in your browser.</p>
+    <p>The drawer reports how faithfully the active features rebuild this token's state (the cosine between the rebuilt and the real vector, and the share of its size they miss), then lists the most active features with a one-line description each, written by an AI model from each feature's strongest examples (Neuronpedia). Pick a feature to see where it fires across the text and which words it writes.</p>
+    <div class="box limit"><b>Limits</b><p>An SAE is a model of the model, trained by others; what it misses is not shown anywhere, and the descriptions are informed guesses. Available for GPT-2 small, the one supported model with open SAEs. Fetching descriptions sends only the layer and feature number to neuronpedia.org, never your text.</p></div>
+  </article>
+
+  <article class="ch" id="ch-experiments">
+    <p class="kicker">Chapter 12</p>
+    <h2>Experiments: interventions and comparisons</h2>
+    <p class="goal">Observation says what happened; an experiment says what would happen otherwise. Interventions change the model; comparisons put two runs side by side.</p>
+
+    <h3>12.1 Knocking parts out</h3>
+    <p><kbd>Shift</kbd>-click a head, or press <kbd>K</kbd> while pointing at it, to mark it for removal (an amber ✕). In the neuron inspector you can mark a whole MLP or a single neuron. Nothing changes until you press <span class="ui">Rerun</span>: the same text then runs through the changed model, in which those parts write nothing, at every position, so every later layer and token sees the change. The unchanged run is kept and shown beneath the new answer, with the first difference underlined, and the readout gives the probability the changed model now assigns to the word the unchanged model wrote. <span class="ui">Clear</span> restores the model.</p>
+    <div class="box ex"><b>Worked example</b><p>GPT-2 on "The country of Canada is a country of immigrants. We are a country of": the four heads attribution ranks highest for " immigrants" take its probability from 44.9% to 9.1% when knocked out together, while four other early heads leave it at 56.4%. Attribution suggested where to look; the intervention confirmed it.</p></div>
+
+    <h3>12.2 Comparing two runs</h3>
+    <p>Press <span class="ui">Pin as A</span> to keep the run on screen, then run something else: change one word, switch to Sample, or knock parts out. The answer shows A's beneath it; chips whose token differs from A's are outlined in amber. In the field, a <span class="ui">Δ A</span> column gives at each depth the cosine distance between this run's state and A's at the token on screen (0 means the same direction), and marks the depth where they <b>part ways</b>, the first to reach a quarter of the largest difference. Heads whose attention differs from A's get an amber outline. Rerunning with interventions pins the unchanged run as A automatically.</p>
+    <div class="box ex"><b>Worked example</b><p>Pin "The capital of France is" and run "The capital of Germany is". At " Germany" the runs part ways at the embedding, as they must. At the final " is" the state barely moves (cosine distance about 0.001) until layer 9, where it jumps tenfold: the country reaches the last token's state late in the network.</p></div>
+    <div class="box limit"><b>Limits</b><p>Knocking out sets a part's output to zero, a blunt change: in normal use no part ever falls completely silent. Runs are compared position by position, which is exact only when both texts have the same number of tokens.</p></div>
+  </article>
+  <article class="ch" id="ch-river">
+    <p class="kicker">Chapter 13</p>
+    <h2>The lens river</h2>
+    <p class="goal">The field shows one guess per depth. The river shows the whole contest: every serious candidate at every depth, so you can see when and how the model makes up its mind.</p>
+
+    <h3>13.1 Construction</h3>
+    <p>Open the <span class="ui">River</span> tab (<kbd>2</kbd>). For the token on screen, the horizontal axis is depth, from the embedding on the left to the output on the right. At each depth the logit lens (§8.4) gives the ten most probable tokens; they are stacked bottom to top as bands, each as tall as its probability, joined smoothly from depth to depth. The eight tokens that ever do best get a colour, kept across the whole river; the rest of each depth's top ten is grey; the empty space above the bands is the probability of every other token in the vocabulary. A strip above the river traces the uncertainty, e<sup>H</sup> of §1.8, on a logarithmic scale from one word to the whole vocabulary.</p>
+
+    <h3>13.2 Using it</h3>
+    <p>Point at a depth to read its top five and its uncertainty. During a replay, a cyan line marks the depth being computed and the river grows to it. Choose another chip to see another token's river. The readout states the conclusion in words: the token it <b>settles on</b>, the first depth from which the top guess no longer changes, and the depth where that token first entered the top ten.</p>
+
+    <h3>13.3 How to read it</h3>
+    <ul>
+      <li>A band that appears late and grows quickly is a decision made late in the network.</li>
+      <li>A guess that leads for several layers and then vanishes is the model changing its mind; the depth where it falls is worth inspecting in the field.</li>
+      <li>A large empty region means the model is spread over many tokens; the uncertainty line says how many, in effect.</li>
+    </ul>
+    <div class="box ex"><b>Worked example</b><p>On GPT-2, generate after "The capital of France is Paris. The capital of Germany is Berlin. The capital of" and look at the token " the" that the model writes: the river settles on " United" from layer 11, having entered the top ten at layer 6, as the model heads for "the United Kingdom". On Qwen2.5-0.5B, the " is" before " Berlin" leans toward " capitals" around layer 20 and settles on " Berlin" (92%) only at layer 23.</p></div>
+    <div class="box limit"><b>Limits</b><p>The river is the logit lens at every depth, with the lens's caveat: rough near the bottom. For large vocabularies on the CPU, depths not yet read out appear as dots and fill in when you pause.</p></div>
+  </article>
+
+  <article class="ch" id="ch-flow">
+    <p class="kicker">Chapter 14</p>
+    <h2>Attention flow</h2>
+    <p class="goal">Attention moves information between positions (§1.4). The flow draws where it moved, for the whole text and every layer at once, and estimates what fed the token on screen.</p>
+
+    <h3>14.1 Construction</h3>
+    <p>Open the <span class="ui">Flow</span> tab (<kbd>3</kbd>). Tokens run left to right and depths bottom to top; each dot is one token's state after one layer. A line from token j at depth ℓ to token i at depth ℓ+1 means layer ℓ's attention carried information from j into i. Its weight is not the raw attention but attention times the length of the value vector being read, averaged over the layer's heads and scaled so that each state's incoming weights sum to one:</p>
+    <p class="eq">f<sub>ℓ</sub>(i ← j) ∝ Σ<sub>heads h</sub> a<sup>h</sup><sub>ij</sub> · ‖v<sup>h</sup><sub>j</sub>‖</p>
+    <p class="eq-note">After Kobayashi et al. (2020). Links under 3%, and beyond each state's four strongest, are omitted.</p>
+    <p>Why weight by the value? Most models park a large share of their attention on the first token, whose value vector is tiny: looking there moves almost nothing. Raw weights would draw thick lines from the first token everywhere; weighted ones show where information actually came from.</p>
+
+    <h3>14.2 Rollout</h3>
+    <p>With <span class="ui">Rollout</span> on, the tool chains the flow through the layers to estimate how much each input token contributes to the token on screen by the last layer (Abnar and Zuidema, 2020). Counting each layer's residual connection as half:</p>
+    <p class="eq">r<sub>L</sub> = e<sub>i</sub>,&nbsp;&nbsp; r<sub>ℓ</sub> = ( ½ F<sub>ℓ</sub> + ½ I )<sup>T</sup> r<sub>ℓ+1</sub></p>
+    <p>The result is drawn as a cyan cone of dots and links reaching back from the token, and as bars under the input tokens. Because the first token only ever attends to itself, whatever reaches it stays there, and rollout accumulates on it; the readout therefore reports the first token's share separately, and the shares of the other tokens among themselves.</p>
+
+    <h3>14.3 Using and reading it</h3>
+    <p>Point at any dot to see what that state took in at that layer: its sources, each with the weighted share and the raw attention side by side. Click a column to put that token on screen. Look for long, strong lines in the upper layers: they are the model fetching a specific earlier word.</p>
+    <div class="box ex"><b>Worked example</b><p>On GPT-2, "The country of Canada is a country of immigrants. We are a country of": point at the second " of" at layer 9. It took in 50% of what it read from the earlier " immigrants", although only 12% of its raw attention went there. This is the copying step behind the model's answer, " immigrants". On Qwen2.5-0.5B with the capitals prompt, the second " is" at layer 18 gives "The" 57% of its raw attention but takes only 13% from it; its real sources are " capital" (29%), " Paris" (18%) and " Germany" (14%).</p></div>
+    <div class="box limit"><b>Limits</b><p>Attention weights and value sizes are real; their product is a derived measure, and rollout is an estimate that ignores what the MLPs do and how the heads' outputs combine. In the example above, rollout for " of" does not rank " immigrants" in its top three even though the per-layer link shows it plainly: read the layer-by-layer links first and the cone second.</p></div>
+  </article>
+
+  <article class="ch" id="ch-hidden">
+    <p class="kicker">Chapter 15</p>
+    <h2>The hidden-state space</h2>
+    <p class="goal">The hidden states (§1.3) are the model's working representations: one vector per token per depth. This view draws them directly, as a space of their own, so you can watch each token's meaning move through the network.</p>
+
+    <h3>15.1 Construction</h3>
+    <p>Press <kbd>S</kbd> or <span class="ui">Hidden states</span>. The word cloud dims, and every recorded state of the current run appears: n tokens × (L + 1) depths. Each state is first normalised as the model's own normalisation would (centred and divided by its root mean square, §1.6), so the growth of the stream from layer to layer, and the few huge dimensions some models carry, do not dominate. Then one PCA is fitted on all of the run's states except the first token's (an attention sink with outsized values, which would stretch the axes toward itself; it is still drawn) and every state is projected onto its three directions. The readout reports how much of the variation those three directions show. The fit is refreshed as the text grows.</p>
+
+    <h3>15.2 Reading the drawing</h3>
+    <ul>
+      <li><b>Paths.</b> Each token is a line from its embedding through every layer. The token on screen is drawn boldly; the others faintly.</li>
+      <li><b>Steps.</b> Each segment is one layer. Its <span style="color:var(--cyan)">cyan</span> part is how much attention changed the state, its <span style="color:#a996ff">violet</span> part how much the MLP did, and its thickness how large the change was compared with that token's largest. These amounts are exact: the MLP's output is recorded, and the rest of the layer's change is attention's.</li>
+      <li><b>The slice.</b> White dots mark every token at the depth being replayed, so during playback you watch the whole text advance one layer at a time. Short texts are labelled at the slice.</li>
+    </ul>
+    <p>Point at any dot to read its token, depth and what the logit lens says there; click it to put that token on screen. With <kbd>T</kbd>, the camera follows the token's actual state.</p>
+
+    <h3>15.3 How to read it</h3>
+    <p>Tokens whose paths converge have come to be represented alike by the model; paths that separate are being distinguished. A long, violet-heavy step is a layer whose MLP rewrote the token substantially; a cyan-heavy step is one where information arrived from elsewhere. In most models the first layer makes a large jump, from the embedding into the network's working region.</p>
+    <div class="box ex"><b>Worked example</b><p>On GPT-2 with "The capital of France is Paris. The capital of Germany is", by layer 6 the countries and capitals (" France", " Paris", " Germany") have gathered in one region, apart from the function words. On Qwen2.5-0.5B, the final " is" wanders through the middle layers and makes one large final step to the state that reads "Berlin 92%".</p></div>
+    <div class="box limit"><b>Limits</b><p>The states are real; the 3-D picture is a projection, typically showing a third to a half of their variation. Near in the picture usually means near in the full space; far holds less exactly than near.</p></div>
+  </article>
+</section>
+
+<section class="part" id="part-4">
+  <p class="kicker">Part IV · Models and machinery</p>
+
+  <article class="ch" id="ch-choose">
+    <p class="kicker">Chapter 16</p>
+    <h2>Choosing a model, and where it runs</h2>
+    <p class="goal">Every view works on every supported model. Choosing a model is a choice of subject; choosing where it runs is a choice of speed and size.</p>
+
+    <h3>16.1 The model menu</h3>
+    <p>Click the model's name at the top left. The menu lists, under <span class="ui">Ready to use</span>, the built-in models (GPT-2, DistilGPT2, MDLM) and any you have downloaded, with the one open marked. Below, a search of Hugging Face lists open models this tool can run, by family and sorted by downloads, trends or likes, each with a badge:</p>
+    <dl class="defs">
+      <div><dt>Verified</dt><dd>Checked end to end against the reference implementation (Chapter 20).</dd></div>
+      <div><dt>Should load</dt><dd>A supported design that fits; not checked one by one.</dd></div>
+      <div><dt>Runs on your GPU</dt><dd>Too big for the CPU path, but your browser can run it on the graphics card (§16.3).</dd></div>
+      <div><dt>GPU, 8-bit</dt><dd>Too big for the CPU path and, at full precision, for a typical graphics card; it runs on the GPU with its weights stored as 8-bit integers (§16.4).</dd></div>
+      <div><dt>Streams</dt><dd>Too big to hold in memory on the CPU; its weights are read from storage one layer at a time, exactly but slowly.</dd></div>
+      <div><dt>Needs HF token</dt><dd>A gated model: accept its licence on Hugging Face and add a read token under <span class="ui">Token</span>.</dd></div>
+      <div><dt>Too big · Unsupported</dt><dd>Shown with the reason, when "Also show models it can't run yet" is ticked.</dd></div>
+    </dl>
+    <p>Choosing a model shows a check before anything downloads: its family, format, tokenizer, the memory it needs, the space it will take in your browser, expected speed and licence. The weights then come straight from Hugging Face into your browser's storage, are converted there, and load from storage on later visits. The <span class="ui">Storage</span> tab (also reached from <span class="ui">Manage storage</span> at the top of the menu) shows how much of your browser's storage the tool uses and on what: downloaded models, the feature dictionaries of §11.2, and any download that did not finish. Each can be deleted on its own, and <span class="ui">Free up space</span> deletes everything except the model open now. Everything deleted can be downloaded again; when experimenting with large models, clearing the ones you are done with keeps the browser within its storage allowance.</p>
+    <p>A browser keeps each site's storage separate, and each browser and profile has its own, so a model downloaded in one place is invisible in another. <span class="ui">Export</span>, beside each model (Chrome and Edge), copies it to a folder you choose on your disk, with a list of its files and their sizes. <span class="ui">Import model from a folder…</span> (any browser) copies one or several exported models back in and checks every file against that list, so a model never needs downloading twice: a copy on disk takes seconds to a minute, where the download of a 15 GB model takes many minutes. The list itself is cached in your browser and refreshed at most hourly, so opening the menu costs nothing most of the time.</p>
+
+    <h3>16.2 Families</h3>
+    <p>GPT-2 and DistilGPT2 use learned positions, LayerNorm and GELU. Llama 3.2, SmolLM2, Qwen2.5 and Qwen3 rotate queries and keys for position, use RMSNorm, gated SwiGLU neurons and grouped-query attention; Qwen3 also normalises each head's queries and keys. Pythia applies rotation to part of each head and runs attention and the MLP side by side. Instruction-tuned and chat models receive your text exactly as typed, without the chat template they were trained with, so they continue it rather than reply.</p>
+
+    <h3>16.3 CPU or GPU</h3>
+    <p>Models from Hugging Face run on the graphics card when your browser supports WebGPU (Chrome and Edge, Safari 26, Firefox on Windows), and on the CPU otherwise; the status line says which, and why if the GPU could not take the model. Both compute the same function on the same weights. The GPU is many times faster and, because its memory lies outside the 4 GB a page gets for everything else, holds models of up to about 7 GB of weights whole, where the CPU must stream them. <span class="ui">Run on</span> under Playback switches to the CPU for comparison; the model loads again.</p>
+    <div class="box ex"><b>Measured</b><p>On an Apple M-series machine: Qwen2.5-0.5B, about 11 ms per token for the forward pass on the GPU against 93 ms on the CPU; Qwen2.5-3B, about 0.17 s per token on the GPU with the logit lens at all 37 depths and full attribution, against 1.6 s per token streamed on the CPU with the lens at a sample of depths.</p></div>
+
+    <h3>16.4 Eight-bit weights</h3>
+    <p>A model's weights are published as 16-bit numbers, two bytes each. When those do not fit in the graphics card's memory, the tool can store each weight matrix as 8-bit integers instead, one byte each plus one scale for every 64 weights: about half the memory, and, because decoding one token is limited by how fast the weights can be read, roughly twice the speed. The conversion happens on the GPU as the model loads; the download and the files kept in your browser are unchanged. Formally, each group of 64 weights w<sub>1</sub> … w<sub>64</sub> is replaced by</p>
+    <p class="eq">ŵ<sub>k</sub> = s · round(w<sub>k</sub> / s),&nbsp;&nbsp; s = max<sub>k</sub> |w<sub>k</sub>| / 127</p>
+    <p>so each weight moves by at most half a step. The tool measures the result as it converts: the status line gives the relative size of the change, √(Σ(w − ŵ)² / Σw²), typically about 0.6%. Normalisation weights and biases are kept at full precision.</p>
+    <p><span class="ui">Run on</span> offers <span class="ui">GPU when available</span> (full precision, then 8-bit if that does not fit, then the CPU), <span class="ui">GPU, 8-bit weights</span>, and <span class="ui">CPU only</span>.</p>
+    <div class="box ex"><b>Measured</b><p>Qwen2.5-3B at 8 bits: 3.4 GB of GPU memory instead of 6.2 GB, 19.8 ms per step instead of 52.5, the probability of " Berlin" 0.883 instead of 0.887, and the same 20-token continuation. Qwen2.5-0.5B keeps the same top guess at 23 to 25 of its 25 depths. Qwen2.5-7B at 8 bits: 8.2 GB instead of 15.3 GB, 52 ms per step instead of 110, the same top guess at all 29 depths, and the same continuation.</p></div>
+    <div class="box limit"><b>Limits</b><p>An 8-bit model is a close copy of the published one, not the same model: every number the tool shows moves slightly, and greedy text can take a different turn where two words were nearly tied. The tool says when it is in use. For exact work, choose a model that fits at full precision, or run on the CPU.</p></div>
+  </article>
+
+  <article class="ch" id="ch-diffusion">
+    <p class="kicker">Chapter 17</p>
+    <h2>A different kind of model: diffusion</h2>
+    <p class="goal">MDLM is not a next-word model. It writes the whole answer at once, starting from blanks and filling them in over several steps, and every position can attend to every other.</p>
+    <p>With MDLM chosen, your text is followed by a number of <b>[MASK]</b> slots (the <span class="ui">Tokens</span> setting). At each denoising step the model reads the whole sequence, and each still-masked slot is filled with probability proportional to the step size, taking a token from the model's belief for it; a final pass fills any slot left. The answer shows every slot: locked words bright, the word that just locked highlighted, and masked slots as their current best guess, faded by confidence. The field replays each pass for one slot, by default the one that unmasks at this step; its heads show attention to words on both sides. In the scene, masked slots hang at the weighted centre of their guesses and snap onto a token when they lock. Attribution, interventions and the newer views apply to next-word models and are hidden here.</p>
+  </article>
+
+  <article class="ch" id="ch-kd">
+    <p class="kicker">Chapter 18</p>
+    <h2>Attention without a decoder: a KnowDrive store</h2>
+    <p class="goal">A retrieval store does what one attention head does: it scores a query against a fixed set of keys, masks some of them out, and reads from the best. It has no weights and writes nothing, but its key space can be explored exactly like a vocabulary.</p>
+    <p>The model menu lists <b>Canada 2025/26 Public Data</b>, a KnowDrive store of 391,922 <b>atoms</b> drawn from 12,090 files: lobbying registrations, government spending, registries, elections, parliamentary proceedings, legislation and tariff notices. An atom is a passage of a file (a heading and its paragraph, a table, a speech), stored as one 1,024-number vector made by the Jina-CLIP-v2 embedding model. A model's vocabulary is a fixed set of vectors with labels, and so is a store, so most of Part II applies unchanged.</p>
+    <h3>18.1 What carries over, and what changes</h3>
+    <table class="keys-table">
+      <tr><th>In a transformer</th><th>In the store</th><th>Where you see it</th></tr>
+      <tr><td>Keys</td><td>Atoms: one vector per passage, fixed when the file is stored</td><td>The cloud (Chapter 3)</td></tr>
+      <tr><td>Query · key score</td><td>Cosine between the question and an atom</td><td>Distances from the question (§18.3)</td></tr>
+      <tr><td>A second head</td><td>Full-text (BM25) over the words</td><td>The Full-text switch</td></tr>
+      <tr><td>Combining heads</td><td>Reciprocal Rank Fusion of the two lists</td><td>The Hybrid switch</td></tr>
+      <tr><td>Attention mask</td><td>Tags, store, version and access: which atoms may be read</td><td>Clicking the legend (§18.4)</td></tr>
+      <tr><td>How peaked the attention is</td><td>The recall shape: how the score falls along the page</td><td>The bars in the panel</td></tr>
+      <tr><td>What the head writes (OV)</td><td>The facet read-out: the tags the matched atoms carry</td><td>"What the page is about"</td></tr>
+    </table>
+    <p>What does not exist in a store: learned weights, neurons, a next word to predict. The Forward pass view, the lens, attribution and features are therefore absent for it.</p>
+    <h3>18.2 The cloud of atoms</h3>
+    <p>Each point is an atom, coloured by the domain of its file. Labels are not the atom's text, which would bury the cloud in sentences, but a short name: the three words most particular to that passage (frequent in it, rare in the rest of the store), in reading order. The inspector shows the passage itself, with any web-page markup removed for reading, the file it comes from, its position in that file, and the file's tags. Nearest neighbours are exact over all 391,922 atoms, as for a vocabulary; the fovea streams the vectors tile by tile (about 800 MB in all, of which only what you look at is loaded).</p>
+    <h3>18.3 Asking a question</h3>
+    <p>Pick a question in <span class="ui">Ask the store</span>. Arcs run from the question to the page of atoms the chosen head returns, thickest for the best; the top five are numbered. In a cloud layout the question is placed among its five best atoms, since a layout has no position for a vector it was not built from. <span class="ui">Distances from the question</span> is exact: every atom moves to a radius equal to its true cosine distance from the question, with rings of equal cosine and a dashed ring at the page's edge, the last atom the page took. Everything inside that ring was attended to; everything outside was not.</p>
+    <p>A browser cannot run the embedding model, and KnowDrive's search does not return the question's vector. It does return the score of every atom it ranks, and each score is a fixed function of one dot product with an atom whose vector the data set holds. The vector head's score is exactly the cosine between the question and the atom (checked by searching with an atom's own vector: KnowDB's scores for the 100 nearest atoms equal the cosines computed here). So 1,500 scored atoms pin down all 1,024 numbers of the question's vector by least squares, and the result must reproduce every score. For each of the ten example questions it does: the recovered vector has length 1.0000, every one of the 1,500 scores is reproduced to within 2×10<sup>−7</sup> (the rounding of 32-bit numbers), and the browser's top 50 matches KnowDB's vector list, in order, for all ten. With that vector, the <b>Vector</b> head is recomputed here, over every atom.</p>
+    <p><b>Full-text</b> needs the store's word index, which stays on the server, so that list is KnowDB's own, recorded when the data set was built and replayed. <b>Hybrid</b> is KnowDB's fusion of the two, also replayed.</p>
+    <h3>18.4 The mask</h3>
+    <p>Click a domain in the legend to mask it out, and again to bring it back. Masked atoms fade where they are: the keys never move, because masking changes what may be read, not what is stored. The vector page is re-ranked over the atoms still lit, exactly; the replayed lists are filtered, and say so, since the server would have refilled the page from further down.</p>
+    <h3>18.5 Recall shape and read-out</h3>
+    <p>The bars are the page's scores, best first, the top five bright. A steep fall means the question has a clear answer in a few passages; a flat run means many passages are about equally relevant, the retrieval analogue of a spread-out attention pattern. The line beneath gives the share of the page's score held by the top five. <span class="ui">What the page is about</span> counts the tags of the files on the page: domain, document type, source. It is how a store reports what it read, and in KnowDrive it is also how a next question can be narrowed, by turning a tag found here into a mask.</p>
+    <p class="muted">Real: the atoms, their vectors, tags and text; the vector head's distances and ranking; KnowDB's replayed lists. Derived: the recovered question vector (checked as above), labels, layouts. Illustrated: arcs, the question's placement in a cloud layout.</p>
+  </article>
+
+  <article class="ch" id="ch-glm">
+    <p class="kicker">Chapter 19</p>
+    <h2>A 744-billion-parameter model, streamed from a drive</h2>
+    <p class="goal">GLM-5.2 is far too large for any browser's memory, but each token uses only a small, changing part of it. Keep the part every token needs on the GPU, leave the rest on a fast drive, and read each piece at the moment it is needed.</p>
+    <p>GLM-5.2 (Z.ai, MIT licence) has 744 billion parameters in 78 layers. Three layers are ordinary; in the other 75, the feed-forward part is a <b>mixture of experts</b>: 256 small networks per layer, of which a <b>router</b> picks 8 for each token, plus one shared expert every token uses. So about 40 billion parameters work on any one token, and only the routed experts, about 12.7 GB of them, change from token to token. The technique, and the int4 container the page reads, come from <a href="https://github.com/JustVugg/colibri">colibrì</a> by Vincenzo Fornaro (Apache-2.0): parameters are not something to hold in memory but data to be staged, the way a just-in-time compiler compiles only the code that runs. Open it from the model menu: <span class="ui">GLM-5.2</span> under "Streamed from your drive".</p>
+    <h3>19.1 What lives where</h3>
+    <ul>
+      <li><b>On the GPU, always:</b> attention, the shared experts, the three dense layers and the output layer, about 10 GB in the container's own 4-bit and 8-bit form, decoded inside the GPU kernels.</li>
+      <li><b>On the GPU, as a cache:</b> as many routed experts as the cache you choose holds (21.2 MB each), split equally between the 75 layers, the least recently used of a layer giving way. (One shared pool would fail: a token needs 600 experts, so each layer would evict the experts the next layer is about to use.)</li>
+      <li><b>In RAM, optionally:</b> on a computer with a separate graphics card, experts evicted from the GPU drop into system memory instead of going back to the drive, so a later need for them costs a memory copy rather than a drive read. On Apple Silicon the GPU and the processor share one memory, so this tier would only take room from the GPU cache, and it is off.</li>
+      <li><b>On the drive:</b> all 19,200 routed experts, about 407 GB. When the router picks an expert the cache does not hold, its bytes are read straight from the file on the drive, in place; nothing is copied into the browser's storage.</li>
+    </ul>
+    <h3>19.2 One token, layer by layer</h3>
+    <p>Attention in GLM-5.2 is multi-head latent attention: instead of a key and a value per head, each position stores one compressed 512-number latent plus a 64-number positional part, and every head reads through that latent. Then the router scores all 256 experts; its scores come back from the GPU, the eight best (by score plus a learned balance term) are chosen exactly as the reference does, any missing ones are read from the drive, and the experts run, weighted, added into the residual stream. The page waits on the drive whenever the cache misses, which is why speed depends on the drive far more than on the GPU: a token that misses every expert reads 12.7 GB.</p>
+    <h3>19.3 What the page shows</h3>
+    <ul>
+      <li><b>Experts:</b> 75 rows (the MoE layers) by 256 columns (the experts). For the current token, the eight chosen in each layer: cyan if they were already on the GPU, amber if they had to be read from the drive. Purple shows how often each was routed this session, so the structure of routing (the same experts recur for the same kind of text) builds up as you use it. Hover for an expert's layer, weight and history.</li>
+      <li><b>This token / Session:</b> seconds per token, experts served from the cache, gigabytes and speed read from the drive, the hit rate.</li>
+      <li><b>Logit lens:</b> the next word read off the residual stream at a few depths (Chapter 8), the same idea as for the smaller models.</li>
+      <li><b>Attention:</b> for the newest token, each layer's attention over the earlier tokens, averaged over the 64 heads.</li>
+      <li><b>Warm the cache:</b> colibrì's container ships a routing history; this fills the cache with the most-routed experts before you start, raising the hit rate.</li>
+    </ul>
+    <h3>19.4 Reading ahead</h3>
+    <p>The router of layer <i>l</i>+1 is tiny and always on the GPU, so it can be run early on the state layer <i>l</i> already has, to guess which experts the next layer will want and start reading them before it asks (<span class="ui">Read ahead</span>). The guesses are good: measured on GLM-5.2, 79% of the next layer's eight experts are guessed right (colibrì reports 71.6%). But reading ahead only pays when the drive has idle time to fill. On a USB SSD it does not: every token already keeps it busy, so the 38% of early reads that turn out unneeded, and the cached experts they push out, cost more than the overlap saves (about 31 s per token, against 22.5 s without). It stays off by default; on a faster drive, or with a cache large enough to keep spare slots, it may win. The Experts view marks experts that arrived by reading ahead in green.</p>
+    <h3>19.5 The experts as a space</h3>
+    <p>A router scores expert <i>e</i> as sigmoid(<b>w</b><sub>e</sub> · <b>h</b>), where <b>h</b> is the token's normalised hidden state and <b>w</b><sub>e</sub> is the expert's row of the router: one 6,144-number vector per expert, the direction in the hidden state that wakes it. So the 19,200 experts are 19,200 vectors in one space, exactly the kind of thing the Embeddings view draws, and the model menu lists them as <span class="ui">GLM-5.2 experts</span>. Experts close together answer to the same kind of state; their nearest neighbours often sit in other layers. Each is labelled by layer and number, and with the vocabulary words whose embeddings align best with its row: a rough guide only, since the router reads hidden states, not raw words.</p>
+    <p>With GLM-5.2 running in another tab, each token's choice lights up in the cloud, coloured by where the expert came from. <span class="ui">Distances from the token</span> places every expert at its exact rank in its own layer's choice for the last token (sigmoid score plus balance bias, as the router decides), following the run token by token: the eight chosen per layer sit inside the first ring (checked: 600 of 600 for a token). The balance biases are large (about 4 to 20, rising with depth) beside scores between 0 and 1, so they weigh heavily in every choice; ranks show the decision itself.</p>
+    <h3>19.6 Previews: the periphery at lower fidelity</h3>
+    <p>An exact token waits on the drive; a <b>preview</b> does not. For the next few words, the page runs the token on the GPU alone: each chosen expert that is not already on the GPU is stood in for by the resident expert of the same layer whose router row is closest to it (the expert cloud's geometry, used as a lower-fidelity periphery), with no drive reads, in about half a second per word. The preview is shown faintly after the exact text, then confirmed or replaced as the exact words arrive about 20 seconds later; the exact answer never depends on it. Measured on GLM-5.2, with about 72% of each token's chosen experts missing from the GPU: the preview's first word was exactly right 69% of the time over 13 tokens (71% live, 10 of 14), and the exact word was in its top three 92% of the time. Simply leaving the missing experts out does worse (54%). A preview that runs several words ahead can drift (each word builds on the last approximate one), which shows as an occasional repeated word. <span class="ui">Preview ahead</span> sets how many words; previews never make the exact answer faster, since every chosen expert must still be read.</p>
+    <h3>19.7 Limits</h3>
+    <p>The context stops at 2,048 tokens: GLM-5.2's sparse attention indexer is not in the container, and without it attention is exact only up to that length. The draft head for speculative decoding is not used. Speed: a fraction of a second to a few seconds per token of GPU work, plus whatever the drive takes; on a USB SSD reading about half a gigabyte a second, a cold token takes tens of seconds, and it improves as the cache warms.</p>
+    <p class="muted">Checked: on two test models in the same container format (colibrì's own tiny oracle, converted by its converter, and a random model at GLM-5.2's full dimensions), the engine matches transformers run on the same dequantized weights: identical predictions and experts at every position, residual streams within 2×10<sup>−5</sup>, identical greedy text (tools/glm_ref.py).</p>
+  </article>
+
+  <article class="ch" id="ch-checks">
+    <p class="kicker">Chapter 20</p>
+    <h2>How the numbers are checked</h2>
+    <p class="goal">A visualiser is only as trustworthy as its arithmetic. Every model in the tool is a from-scratch implementation, and each is compared with a reference.</p>
+    <ul>
+      <li><b>Built-in models.</b> GPT-2 matches a reference implementation to four decimal places; MDLM to about 0.00001.</li>
+      <li><b>Hugging Face models</b> marked Verified are checked against the reference library (transformers): the same next word, at least nine of the same top ten guesses, and probabilities within 0.0013 at worst. Others use a supported design but are not checked one by one; the status line says which applies.</li>
+      <li><b>The GPU path</b> is checked against the CPU path recording by recording on the same prompt: the internal state at every depth, attention, neurons, the lens at every depth, attribution and interventions. They agree to about one part in 100,000 for most models (one in 10,000 for Pythia, whose large activations magnify rounding), with probabilities within 0.001.</li>
+      <li><b>Attribution</b> is exact by construction (its shares add up to the score), and was checked against independent computations to about 1e-5.</li>
+      <li><b>A KnowDrive store's vector head</b> (Chapter 18) is checked against KnowDB itself: recovered question vectors reproduce KnowDB's scores to 2×10<sup>−7</sup>, and the browser's top 50 matches KnowDB's list in order for all ten example questions.</li>
+      <li><b>GLM-5.2</b> (Chapter 19) is checked on test models in its container format against transformers on the same dequantized weights: identical predictions, experts and greedy text, residuals within 2×10<sup>−5</sup>.</li>
+      <li><b>Eight-bit weights</b> (§16.4) are a deliberate approximation, checked against the full-precision model on the GPU; the status line reports how far the weights moved, and the figures in §16.4 show how far the predictions move.</li>
+    </ul>
+    <p>The sections at the top of this page classify every element of the screen as <b>real</b> (the model's own numbers), <b>derived</b> (a standard technique applied to them) or <b>illustrated</b> (a drawing to make them readable). When in doubt about a view, its row there says which it is.</p>
+  </article>
+</section>
+
+<section class="part" id="appendix">
+  <p class="kicker">Appendices</p>
+  <article class="ch" id="app-keys">
+    <p class="kicker">Appendix A</p>
+    <h2>Keyboard reference</h2>
+    <table class="keys-table">
+      <tr><td><kbd>M</kbd></td><td>Switch between Embeddings and Forward pass</td></tr>
+      <tr><td><kbd>/</kbd></td><td>Find a token (Embeddings) or type a query (Forward pass)</td></tr>
+      <tr><td><kbd>H</kbd></td><td>Camera home</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Unpin; leave the distances view</td></tr>
+      <tr><td><kbd>C</kbd></td><td>Clusters ↔ PCA layout</td></tr>
+      <tr><td><kbd>F</kbd> <kbd>L</kbd> <kbd>R</kbd></td><td>Foveation on/off; the fovea's local layout; the fovea rings</td></tr>
+      <tr><td><kbd>Z</kbd></td><td>Re-arrange the region under the parafovea (semantic zoom)</td></tr>
+      <tr><td><kbd>D</kbd></td><td>Distances from the pinned token</td></tr>
+      <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td><td>Field, River, Flow</td></tr>
+      <tr><td><kbd>S</kbd></td><td>Hidden-state space</td></tr>
+      <tr><td><kbd>A</kbd></td><td>Attribution</td></tr>
+      <tr><td><kbd>T</kbd></td><td>Fly-through</td></tr>
+      <tr><td><kbd>K</kbd>, <kbd>Shift</kbd>-click</td><td>Mark the head under the pointer to knock out</td></tr>
+      <tr><td><kbd>P</kbd></td><td>Hide or show the panel</td></tr>
+      <tr><td>drag · wheel · <kbd>Shift</kbd>-drag</td><td>Orbit · zoom · pan</td></tr>
+    </table>
+  </article>
+  <article class="ch" id="app-gloss">
+    <p class="kicker">Appendix B</p>
+    <h2>Glossary of terms</h2>
+    <p class="muted">Every term used on this page and in the tool, with the section that explains it.</p>
+    <table class="gloss">
+      <tr><td>Activation</td><td>The value a neuron takes at one position: how strongly it fires (§1.5).</td></tr>
+      <tr><td>Atom</td><td>In a KnowDrive store, one passage of a file stored as one vector: what a key is to an attention head (§18.1).</td></tr>
+      <tr><td>Attention</td><td>The mechanism by which a position reads from earlier positions: a weighted average of their value vectors, with weights from query–key similarity (§1.4).</td></tr>
+      <tr><td>Attention flow</td><td>The view of where attention moved information, weighted by the size of what each token offers (Chapter 14).</td></tr>
+      <tr><td>Attention sink</td><td>A token, usually the first, that many heads attend to when they have nothing to do; it carries little information (§8.2, §14.1).</td></tr>
+      <tr><td>Attention weight</td><td>The probability a head gives to one earlier position; a head's weights over the positions sum to one (§1.4).</td></tr>
+      <tr><td>Attribution (direct logit)</td><td>The exact split of a word's score into one share per part of the network, counting direct effects only (Chapter 10).</td></tr>
+      <tr><td>Autoregressive</td><td>Writing one token at a time, each conditioned on everything before it (§1.7). Contrast diffusion.</td></tr>
+      <tr><td>BM25</td><td>A full-text score: how often a passage uses the question's words, weighted by how rare they are. A store's second head beside the vector score (§18.3).</td></tr>
+      <tr><td>Barcode</td><td>The inspector's picture of all of a token's coordinates, one column each (§5.1).</td></tr>
+      <tr><td>Causal</td><td>Able to attend only to earlier positions, as next-word models are (§1.4).</td></tr>
+      <tr><td>Chip</td><td>One token of the run in the forward-pass panel; click to inspect that position (§7.2).</td></tr>
+      <tr><td>Cosine similarity, distance</td><td>The cosine of the angle between two vectors (1 is the same direction); distance is one minus it (§2.2).</td></tr>
+      <tr><td>Depth</td><td>A point in the network: the embedding (depth 0) or the output of a layer. A model with L layers has L + 1 depths.</td></tr>
+      <tr><td>Derived</td><td>Computed from the model's numbers by a standard technique that adds assumptions, such as the logit lens or PCA (top of this page).</td></tr>
+      <tr><td>Diffusion model</td><td>A model that fills in a whole masked answer over several steps, attending in both directions; here MDLM (Chapter 17).</td></tr>
+      <tr><td>Embedding</td><td>A token's starting vector, one row of the embedding matrix (§1.2).</td></tr>
+      <tr><td>Embedding space</td><td>The fixed cloud of all token embeddings; the model's first latent space (§2.1, Part II).</td></tr>
+      <tr><td>Entropy, e<sup>H</sup></td><td>How spread out a probability distribution is; e<sup>H</sup> is the equivalent number of equally likely choices (§1.8).</td></tr>
+      <tr><td>Facet read-out</td><td>The tags carried by the atoms a store returned, counted: what the matched set is about, and a way to narrow the next question (§18.5).</td></tr>
+      <tr><td>Feature</td><td>A direction in a sparse autoencoder's dictionary that tends to mean one thing (§11.2).</td></tr>
+      <tr><td>Fidelity line</td><td>The live measure of how much true neighbourhood structure the current layout keeps (§2.5).</td></tr>
+      <tr><td>Fly-through</td><td>The camera following the thought path, or the token's real state in the hidden-state space (§9.2).</td></tr>
+      <tr><td>Fovea, parafovea, periphery</td><td>The regions of full, intermediate and minimal detail around the gaze (Chapter 4).</td></tr>
+      <tr><td>GELU, SwiGLU</td><td>The nonlinearities used in MLPs: GELU in GPT-2 and Pythia; SwiGLU, a gated product, in Llama and Qwen (§1.5).</td></tr>
+      <tr><td>8-bit weights</td><td>Weights stored as one-byte integers with a scale per 64, about half the memory of the published 16-bit weights; a close copy of the model (§16.4).</td></tr>
+      <tr><td>GPU, WebGPU</td><td>The graphics card, and the browser interface that lets a page compute on it (§16.3).</td></tr>
+      <tr><td>Greedy, sampling</td><td>Always writing the most probable token, or drawing one at random by probability (§1.7, §7.1).</td></tr>
+      <tr><td>Grouped-query attention</td><td>Several heads sharing one set of keys and values while keeping their own attention weights (§1.4).</td></tr>
+      <tr><td>Head</td><td>One of the parallel attention mechanisms in a layer (§1.4).</td></tr>
+      <tr><td>Hidden state</td><td>The residual stream of one token at one depth; the model's working representation (§1.3, Chapter 15).</td></tr>
+      <tr><td>Illustrated</td><td>A drawing that makes real numbers readable but is not itself an object in the model, such as the thought path (top of this page).</td></tr>
+      <tr><td>Intervention, knockout</td><td>Changing the model, here by silencing a head, an MLP or a neuron, and running it again (Chapter 12).</td></tr>
+      <tr><td>KV cache</td><td>The stored keys and values of earlier positions, so each new token needs only one pass (§1.7).</td></tr>
+      <tr><td>KnowDrive store</td><td>A retrieval store whose atoms are keys scored against a question, with no weights and no decoder: attention without the rest of a transformer (Chapter 18).</td></tr>
+      <tr><td>Latent space</td><td>A vector space in which a model represents things (Chapter 2).</td></tr>
+      <tr><td>Layer</td><td>One block of the network: attention, then the MLP, each adding to the residual stream (§1.3).</td></tr>
+      <tr><td>LayerNorm, RMSNorm</td><td>The normalisations applied before each part reads the stream; LayerNorm also removes the mean (§1.6).</td></tr>
+      <tr><td>Lens river</td><td>The logit lens at every depth for one token, drawn as stacked probability bands (Chapter 13).</td></tr>
+      <tr><td>Logit</td><td>A token's raw score before the softmax; only differences between logits matter (§1.7).</td></tr>
+      <tr><td>Logit lens</td><td>Reading the stream at any depth through the final normalisation and unembedding, as if it were the last layer (§8.4).</td></tr>
+      <tr><td>Mixture of experts</td><td>A feed-forward layer made of many small networks, of which a router picks a few per token; GLM-5.2 has 256 per layer and uses 8 (Chapter 19).</td></tr>
+      <tr><td>MLP</td><td>The position-wise part of each layer: up-projection, nonlinearity, down-projection (§1.5).</td></tr>
+      <tr><td>Mask (store)</td><td>A rule, such as a tag, that decides which atoms a question may read; changing it changes what is attended to without moving any key (§18.4).</td></tr>
+      <tr><td>Nearest neighbours</td><td>The tokens most similar to a given one by cosine, measured in the full space (§2.2, §5.1).</td></tr>
+      <tr><td>Neuron</td><td>One component of an MLP's hidden layer, with its own input and output directions (§1.5, §11.1).</td></tr>
+      <tr><td>Parts ways</td><td>In a comparison, the first depth at which two runs' states differ substantially (§12.2).</td></tr>
+      <tr><td>PCA</td><td>Principal component analysis: projecting onto the directions of greatest variation (§2.3).</td></tr>
+      <tr><td>Multi-head latent attention</td><td>Attention that stores one compressed latent per position instead of a key and value per head; GLM-5.2's is 576 numbers per position per layer (§19.2).</td></tr>
+      <tr><td>Query, key, value</td><td>The three vectors a head computes: what a position looks for, what it advertises, and what it hands over (§1.4).</td></tr>
+      <tr><td>Reciprocal Rank Fusion</td><td>A way to merge ranked lists: each item scores 1/(k + its rank) in each list, summed. How a store combines its vector and full-text heads (§18.3).</td></tr>
+      <tr><td>Recall shape</td><td>How a store's scores fall along the page it returns: steep for a clear answer in a few passages, flat when many are about equally relevant (§18.5).</td></tr>
+      <tr><td>Real</td><td>The model's own numbers, read straight from the computation (top of this page).</td></tr>
+      <tr><td>Residual stream</td><td>The vector per position that every layer reads from and adds to (§1.3).</td></tr>
+      <tr><td>Router</td><td>The small layer that scores every expert for a token and picks the few that run (§19.2).</td></tr>
+      <tr><td>Rollout</td><td>An estimate of input tokens' contributions to a later token, chaining attention flow through the layers (§14.2).</td></tr>
+      <tr><td>Rotary embedding</td><td>Encoding position by rotating queries and keys, used by Llama, Qwen and Pythia (§1.2).</td></tr>
+      <tr><td>Semantic zoom</td><td>Re-running the clustering on just the region under the gaze, so that region is drawn faithfully (§6.1).</td></tr>
+      <tr><td>Softmax</td><td>The function that turns scores into probabilities: exponentiate and normalise (§1.7).</td></tr>
+      <tr><td>Sparse autoencoder (SAE)</td><td>A second network that rewrites a hidden state as a sum of a few dictionary features (§11.2).</td></tr>
+      <tr><td>Streaming</td><td>Reading a model's weights from browser storage one layer at a time, when they do not fit in memory (§16.1).</td></tr>
+      <tr><td>Thought path</td><td>The probability-weighted average position of the logit lens's guesses at each depth; an illustration (§9.1).</td></tr>
+      <tr><td>Tied embeddings</td><td>Using the same matrix to read tokens in and to score them out (§1.7).</td></tr>
+      <tr><td>Token, vocabulary</td><td>A unit of text, and the fixed table of all of them (§1.1).</td></tr>
+      <tr><td>UMAP</td><td>A nonlinear method that keeps each point's nearest neighbours nearby; the "Clusters" layout (§2.3).</td></tr>
+      <tr><td>Unembedding</td><td>The matrix that turns the final state into one logit per token (§1.7).</td></tr>
+      <tr><td>Value vector</td><td>What a token hands to a head that attends to it; its length sets how much the attention actually moves (§1.4, §14.1).</td></tr>
+      <tr><td>Width (d)</td><td>The number of coordinates in each embedding and hidden state: 768 for GPT-2 (§1.2).</td></tr>
+      <tr><td>Write strength</td><td>The length of the vector a head adds to the stream (§8.2).</td></tr>
+    </table>
+    <p class="back-top"><a href="#handbook">↑ Back to the contents</a></p>
+  </article>
+</section>
+
+<footer>
+  <p>Latent Fovea is built by <a href="https://knowdrive.ai">KnowDrive.ai</a>, Recourse Software Inc., and released under the Apache License 2.0 (<a href="https://github.com/Recourse-Software-Inc/latent-fovea">source</a>). GLM-5.2 streaming follows the technique and container format of colibri by Vincenzo Fornaro (Apache-2.0). Layouts use UMAP (umap-learn, BSD-3-Clause); GPT-2 features use Joseph Bloom's sparse autoencoders (MIT) and Neuronpedia's descriptions; the KnowDrive store's vectors come from Jina-CLIP-v2 (Jina AI).</p>
+  Built-in models: GPT-2 small (OpenAI, MIT), DistilGPT2 (Hugging Face, Apache-2.0), MDLM trained on OpenWebText (Kuleshov Group, Cornell, Apache-2.0). Models loaded from Hugging Face come under their own licences, shown before you download. Weights are the public releases, kept at 16-bit precision; models published in bfloat16 are rounded to that format when they load.
+</footer>
+
+</div>
+<script>
+// Shown in a window over the viewer (?embed): the back link closes the window instead.
+if (new URLSearchParams(location.search).has('embed') && parent !== window) {
+  document.documentElement.classList.add('embed');
+  const b = document.getElementById('back');
+  b.textContent = 'Back to the viewer';
+  b.addEventListener('click', (e) => { e.preventDefault(); parent.postMessage('lf-close-explain', location.origin); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') parent.postMessage('lf-close-explain', location.origin); });
+}
+
+// ---------- navigation ----------
+(() => {
+  const side = document.getElementById('side'), tocBtn = document.getElementById('tocBtn'), topBtn = document.getElementById('topBtn');
+  const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const title = (el) => (el.querySelector('h2') || {}).textContent || '';
+  const targets = [];  // in page order: { id, el }
+  let html = '<div class="side-h">Is it real?</div><a href="#top" data-id="top">Summary of this tool</a>';
+  targets.push({ id: 'top', el: document.getElementById('top') });
+  for (const sec of document.querySelectorAll('.wrap > section[data-nav]')) {
+    html += `<a href="#${sec.id}" data-id="${sec.id}">${esc(sec.dataset.nav)}</a>`;
+    targets.push({ id: sec.id, el: sec });
+  }
+  html += '<div class="side-h">The handbook</div><a href="#handbook" data-id="handbook">Contents</a>';
+  targets.push({ id: 'handbook', el: document.getElementById('handbook') });
+  const chapters = [...document.querySelectorAll('article.ch')];
+  for (const part of document.querySelectorAll('section.part')) {
+    const kick = (part.querySelector(':scope > .kicker') || {}).textContent || '';
+    html += `<div class="side-h">${esc(kick.replace(/^Part [IV]+ · /, (m) => m))}</div>`;
+    for (const ch of part.querySelectorAll('article.ch')) {
+      const k = (ch.querySelector('.kicker') || {}).textContent || '';
+      const n = (k.match(/(\d+|[A-Z])$/) || [''])[0];
+      html += `<a href="#${ch.id}" data-id="${ch.id}"><span class="n">${n}</span>${esc(title(ch))}</a>`;
+      targets.push({ id: ch.id, el: ch });
+    }
+  }
+  side.innerHTML = html;
+
+  // Anchors on chapter and section headings; subsections get ids from their chapter.
+  for (const t of targets) {
+    const h = t.el.tagName === 'H1' ? null : t.el.querySelector('h2');
+    if (h && !h.querySelector('.anchor')) h.insertAdjacentHTML('beforeend', `<a class="anchor" href="#${t.id}" aria-label="Link to this section">#</a>`);
+  }
+  for (const ch of chapters) ch.querySelectorAll('h3').forEach((h, i) => {
+    if (!h.id) h.id = `${ch.id}-${i + 1}`;
+    h.insertAdjacentHTML('beforeend', `<a class="anchor" href="#${h.id}" aria-label="Link to this subsection">#</a>`);
+  });
+
+  // Previous and next chapter.
+  chapters.forEach((ch, i) => {
+    const p = chapters[i - 1], q = chapters[i + 1], lab = (c) => `${esc((c.querySelector('.kicker') || {}).textContent || '')}`;
+    let nav = '<nav class="pn" aria-label="Chapter navigation">';
+    if (p) nav += `<a class="prev" href="#${p.id}"><small>← ${lab(p)}</small>${esc(title(p))}</a>`;
+    if (q) nav += `<a class="next" href="#${q.id}"><small>${lab(q)} →</small>${esc(title(q))}</a>`;
+    else nav += '<a class="next" href="#handbook"><small>↑ Back</small>Contents</a>';
+    ch.insertAdjacentHTML('beforeend', nav + '</nav>');
+  });
+
+  // Where am I? The last target whose top has passed the upper part of the window.
+  const links = new Map([...side.querySelectorAll('a[data-id]')].map((a) => [a.dataset.id, a]));
+  // Keep an entry visible inside the list itself (never scrolling the page).
+  const reveal = (a, centre) => {
+    if (!a || side.clientHeight === 0) return;
+    const top = a.offsetTop, h = a.offsetHeight, view = side.clientHeight;
+    if (centre) side.scrollTop = top - view / 2 + h / 2;
+    else if (top < side.scrollTop + 20) side.scrollTop = top - 20;
+    else if (top + h > side.scrollTop + view - 20) side.scrollTop = top + h - view + 20;
+  };
+  let current = '';
+  const spy = () => {
+    let id = targets[0].id;
+    for (const t of targets) if (t.el && t.el.getBoundingClientRect().top < innerHeight * 0.3) id = t.id;
+    if (id !== current) {
+      links.get(current)?.classList.remove('on');
+      const a = links.get(id); a?.classList.add('on'); current = id;
+      reveal(a, false);
+    }
+    topBtn.hidden = scrollY < 900;
+  };
+  let raf = 0;
+  addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; spy(); }); }, { passive: true });
+  spy();
+
+  // The contents button opens the list as a sheet; choosing an entry, Escape or a click outside closes it.
+  const close = () => { side.classList.remove('sheet'); tocBtn.setAttribute('aria-expanded', 'false'); };
+  tocBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = !side.classList.contains('sheet');
+    side.classList.toggle('sheet', open); tocBtn.setAttribute('aria-expanded', String(open));
+    if (open) reveal(links.get(current), true);
+  });
+  side.addEventListener('click', (e) => { if (e.target.closest('a') && side.classList.contains('sheet')) close(); });
+  document.addEventListener('click', (e) => { if (side.classList.contains('sheet') && !side.contains(e.target)) close(); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  topBtn.addEventListener('click', () => scrollTo({ top: 0, behavior: 'smooth' }));
+
+  // Glossary filter.
+  const gl = document.querySelector('.gloss');
+  if (gl) {
+    gl.insertAdjacentHTML('beforebegin', '<input type="search" class="gloss-find" id="glossFind" placeholder="Find a term…" aria-label="Find a term in the glossary" autocomplete="off" spellcheck="false" />');
+    document.getElementById('glossFind').addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      for (const tr of gl.rows) tr.classList.toggle('hide', !!q && !tr.textContent.toLowerCase().includes(q));
+    });
+  }
+})();
+</script>
+</body>
+</html>

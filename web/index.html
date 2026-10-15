@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: Apache-2.0
+     Copyright 2026 Recourse Software Inc. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="author" content="Recourse Software Inc. (KnowDrive.ai)" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Latent Fovea</title>
+<meta name="description" content="Fly through the real latent space of an open-weights model. Full detail only where you look: what the model computes is shown in full detail where you look." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<canvas id="gl" aria-label="3-D point cloud of the model's embedding space"></canvas>
+<canvas id="ov" aria-hidden="true"></canvas>
+
+<header class="brand">
+  <div class="pills"><img class="kd-logo" src="kd-logo.jpg" alt="KnowDrive" width="28" height="28" /><span class="pill accent">Latent Fovea</span><span class="pill" id="modePill">Foveated</span><a class="pill real-link" href="real.html" data-explain>Is it real?</a></div>
+  <label class="model-pick"><span class="section-k">Model</span><button type="button" class="model-btn" id="modelPick" aria-haspopup="dialog" aria-expanded="false" aria-controls="hubDlg" disabled><span id="modelPickName">Loading…</span><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 4.5 6 8.5 10 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button><a id="modelLink" class="model-link" target="_blank" rel="noopener" hidden></a></label>
+  <div class="modes" role="tablist" aria-label="View">
+    <button type="button" role="tab" id="modeEmbed" aria-selected="true">Embeddings</button>
+    <button type="button" role="tab" id="modeFwd" aria-selected="false">Forward pass <kbd>M</kbd></button>
+  </div>
+  <div class="layout-pick" id="layoutPick" role="radiogroup" aria-label="Layout of the cloud">
+    <button type="button" role="radio" data-layout="umap" aria-checked="false" title="UMAP: tokens grouped with their nearest neighbours (C)">Clusters</button>
+    <button type="button" role="radio" data-layout="pca" aria-checked="false" title="PCA: the three directions of greatest spread (C)">PCA</button>
+    <button type="button" role="radio" data-layout="axes" aria-checked="false" id="axesBtn" title="Axes you choose: word pairs become the x and y directions">Axes</button>
+    <label class="bright" title="Brightness of the cloud's dots (under the fovea they are dimmed further)"><span aria-hidden="true">◐</span><input type="range" id="cloudBright" min="15" max="250" value="100" aria-label="Dot brightness" /><output id="cloudBrightOut">100%</output></label>
+    <button type="button" class="local" id="radialBtn" hidden title="Distances from the pinned token: every token at its exact distance from it (D)">Distances from here</button><span class="info radial-info" tabindex="0" role="note" aria-label="About the radial view" hidden>i<span class="tip"><b>How far from here, exactly.</b> Click a token to pin it, then press <b>D</b>. Every token slides out along the direction it already sits in on screen to a radius equal to its true cosine distance from the pinned token, on a disc facing you, with rings at cosine 0.9, 0.7, 0.5, 0.3 and 0.1. The radius is exact; the direction around the disc is kept from the cloud and means little. It answers the one question a map can't: what is really near this token, and how near. D again, Esc, or another layout restores the cloud.</span></span>
+    <button type="button" class="local" id="localFit" hidden title="Semantic zoom: lay out the tokens under the parafovea again with their own clustering, so this region is faithful (Z)">Re-arrange this region</button><span class="info" tabindex="0" role="note" aria-label="About re-arranging a region">i<span class="tip"><b>Semantic zoom.</b> The cloud squeezes the whole vocabulary into three dimensions at once, so any one region is a compromise. Zoom in until the dotted parafovea holds a few hundred to a few thousand tokens and press <b>Z</b>: those tokens are laid out again by their own clustering (UMAP on just their vectors), in place, keeping the region's centre, size and orientation. With only that region to honour, the layout keeps far more of its real neighbourhoods, and the line above says how much, before and after. The rest of the cloud stays as context. Press Z again to restore the global layout; switching Clusters / PCA restores it too. Derived, like any layout.</span></span>
+    <span class="layout-note" id="layoutNote"></span>
+  </div>
+  <form class="axes" id="axesForm" hidden>
+    <label>x <input id="axX" value="king − queen" spellcheck="false" aria-label="x axis as a word pair, a minus b" /></label>
+    <label>y <input id="axY" value="Paris − France" spellcheck="false" aria-label="y axis as a word pair, c minus d" /></label>
+    <button type="submit">Lay out</button>
+    <span class="info" tabindex="0" role="note" aria-label="About axes"><span class="tip"><b>Axes you choose.</b> Type two word pairs, "a − b". The x direction is a's vector minus b's, so a token's x position is exactly how much more a-like than b-like it is; y is the second pair, made at right angles to x; depth is the direction of greatest remaining spread. Unlike Clusters or PCA, nothing here is a compromise: positions along x and y are true projections of the real vectors, and the line below says how much of the vocabulary's variation each axis holds. Only single-token words work; the box says so if one isn't.</span>i</span>
+    <span class="note" id="axesMsg"></span>
+  </form>
+  <p class="layout-fid" id="layoutFid" hidden><span id="layoutFidText"></span><span class="info" tabindex="0" role="note" aria-label="About this number">i<span class="tip"><b>How much of the real geometry this layout keeps</b>, measured live for this model on 150 tokens spread across the vocabulary. The cloud is read at the scale of regions, so that is what is measured: <b>same region</b> is how often a token's 15 true nearest neighbours land within its nearest 1% of the cloud, about one visible blob; <b>near/far agreement</b> is how well the cloud orders other tokens from near to far around a token, the way you read it, compared with the real space: partners at the 1st, 2nd, 3rd, 5th, 8th… nearest true positions, out to half the vocabulary (1 = the same order, 0 = unrelated). For PCA, also the share of the variation its three directions hold. <span id="layoutFidStrict"></span> The cloud is a map for a visual brain; the fovea's neighbour lines are measured in the full space wherever the map must bend.</span></span></p>
+  <h1 id="modelName">Loading model…</h1>
+  <p class="sub" id="modelSub"></p>
+</header>
+
+<form class="query" id="query" role="search" autocomplete="off">
+  <p class="q-kicker" id="qKicker">Running in your browser</p>
+  <p class="q-about" id="qAbout" hidden></p>
+  <div class="q-bar">
+    <input id="q" placeholder="Type your query" aria-label="Your query" spellcheck="false" />
+    <button type="submit" id="qGo">Run</button>
+  </div>
+  <div class="q-examples" id="qExamples">
+    <button type="button">The capital of France is</button>
+    <button type="button">Once upon a time, there was a</button>
+    <button type="button">The meaning of life is</button>
+    <button type="button">def fibonacci(n):</button>
+  </div>
+  <p class="q-hint">Press Enter and watch it think, layer by layer.</p>
+  <div class="q-out" id="qOut" aria-live="polite"></div>
+  <a class="q-what" href="real.html" data-explain>What am I seeing here?</a>
+  <div class="note q-status" id="qStatus"></div>
+</form>
+
+<div class="hud stats-only" id="hud">
+  <div class="stat"><span class="k">Frame</span><span class="v" id="sFps">–</span></div>
+  <div class="stat embed-only"><span class="k">In fovea</span><span class="v" id="sFov">–</span></div>
+  <div class="stat embed-only"><span class="k">Streaming</span><span class="v" id="sStream">–</span></div>
+  <div class="stat embed-only"><span class="k">Cache</span><span class="v" id="sCache">–</span></div>
+  <div class="stat embed-only"><span class="k">Tiles</span><span class="v" id="sTiles">–</span></div>
+  <div class="stat"><span class="k">Kernel</span><span class="v" id="sKernel">–</span></div>
+</div>
+
+<aside class="inspector" id="inspector" aria-live="polite">
+  <div class="empty" id="inspEmpty">Look at a point to read it. Click to pin it.</div>
+  <div id="inspBody" hidden>
+    <div class="insp-head">
+      <span class="pill" id="iCat"></span>
+      <span class="pill ghost" id="iPin">Following gaze</span>
+    </div>
+    <div class="token" id="iToken"></div>
+    <div class="kd-atom" id="iKd" hidden></div>
+    <div class="meta-row"><span>Token id <b id="iId"></b></span><span>‖v‖ <b id="iNorm"></b></span></div>
+    <div class="section-k" id="iDims">Its 768 coordinates</div>
+    <canvas id="barcode" width="768" height="44"></canvas>
+    <div class="note" id="iRow"></div>
+    <div class="section-k">Nearest in the full space</div>
+    <ol class="nbrs" id="iNbrs"></ol>
+    <div class="note" id="iCheck"></div>
+  </div>
+</aside>
+
+<section class="dock">
+  <div class="kdq" id="kdq" hidden>
+    <div class="section-k">Ask the store <span class="info" tabindex="0" role="note" aria-label="About asking the store">i<span class="tip"><b>KnowDrive "knowledge stores" are the attention you'd watch in a GPT, with nothing else attached.</b> In a language model, each word's query is scored against the keys of earlier words, and the result is mixed into the next layer. Here the keys are passages of a store (1,024-number vectors), the query is your question, and there is no next layer: the top-scoring page is the output. <b>Vector</b> is the query·key score (cosine), exact over every key. <b>Full-text</b> is a second head scoring by words (BM25), replayed from the server. <b>Hybrid</b> fuses the heads (Reciprocal Rank Fusion). Clicking a legend colour is an attention mask: the same keys, fewer of them visible. The bars are the attention pattern, sharp or diffuse, and the tags are the read-out: what was attended to.</span></span></div>
+    <select id="kdqPick" aria-label="Example question"></select>
+    <div class="kdq-heads" id="kdqHeads" role="radiogroup" aria-label="Which head">
+      <button type="button" role="radio" data-head="vector" aria-checked="true">Vector</button><button type="button" role="radio" data-head="fts" aria-checked="false">Full-text</button><button type="button" role="radio" data-head="hybrid" aria-checked="false">Hybrid</button>
+    </div>
+    <div class="note" id="kdqNote"></div>
+    <div id="kdqBody" hidden>
+      <canvas id="kdqShape" width="560" height="56" aria-label="Scores of the page, best first"></canvas>
+      <div class="note" id="kdqShapeNote"></div>
+      <ol class="nbrs kdq-hits" id="kdqHits"></ol>
+      <div class="section-k">What the page is about</div>
+      <div class="kdq-facets" id="kdqFacets"></div>
+    </div>
+    <button type="button" class="local" id="kdqRadial" hidden>Distances from the question</button>
+  </div>
+  <div class="kdq" id="ex" hidden>
+    <div class="section-k">GLM-5.2 routing <span class="info" tabindex="0" role="note" aria-label="About the expert cloud">i<span class="tip"><b>The experts, as a space.</b> Each point is one of GLM-5.2's 19,200 routed experts (75 layers × 256), placed by its row of the router: the direction in the hidden state that makes the router pick it. Experts close together answer to the same kind of state, whatever their layer. While GLM-5.2 runs in another tab, each token's choice lights up here, coloured by where the expert came from: cyan already on the GPU, green read ahead, pink from RAM, amber from the drive. <b>Distances from the token</b> puts every expert at its exact rank in its own layer's choice for that token (score plus balance bias, as the router decides); the eight chosen per layer sit inside the first ring.</span></span></div>
+    <div class="note" id="exNote"></div>
+    <button type="button" class="local" id="exRadial" hidden>Distances from the token</button>
+  </div>
+  <div class="legend" id="legend"></div>
+  <form class="find" id="findForm" role="search">
+    <label for="find" class="section-k">Find a token</label>
+    <div class="find-row"><input id="find" autocomplete="off" spellcheck="false" placeholder="e.g. king, Paris, 1999" /><button type="submit">Go</button></div>
+    <div class="note" id="findMsg"></div>
+  </form>
+  <details class="settings">
+    <summary>Settings</summary>
+    <div class="field"><div class="row"><label for="rFov">Fovea radius</label><output id="rFovOut"></output></div><input type="range" id="rFov" min="50" max="260" value="120" /></div>
+    <div class="field"><div class="row"><label for="rPara">Parafovea radius</label><output id="rParaOut"></output></div><input type="range" id="rPara" min="140" max="700" value="330" /></div>
+    <div class="field two stats-only">
+      <label>Link <select id="bw"><option value="1">1 MB/s</option><option value="4">4 MB/s</option><option value="16" selected>16 MB/s</option><option value="64">64 MB/s</option><option value="0">Unlimited</option></select></label>
+      <label>Cache <select id="cache"><option value="8">8 MB</option><option value="24" selected>24 MB</option><option value="64">64 MB</option></select></label>
+    </div>
+    <div class="field two">
+      <label class="check"><input type="checkbox" id="optAuto" checked /> Wander when idle</label>
+      <button type="button" id="flush" class="stats-only">Flush cache</button>
+    </div>
+  </details>
+  <div class="keys">
+    <span><kbd>drag</kbd>orbit</span><span><kbd>wheel</kbd>zoom</span><span><kbd>F</kbd>foveation</span><span><kbd>L</kbd>lens</span><span><kbd>R</kbd>rings</span><span><kbd>/</kbd>find</span><span><kbd>C</kbd>clusters/PCA</span><span><kbd>H</kbd>home</span><span><kbd>esc</kbd>unpin</span>
+  </div>
+  <p class="credit" style="margin:8px 0 0;font-size:11px;opacity:.6">Latent Fovea by <a href="https://knowdrive.ai" target="_blank" rel="noopener">KnowDrive.ai</a>, Recourse Software Inc. · Apache-2.0 · <a href="https://github.com/Recourse-Software-Inc/latent-fovea" target="_blank" rel="noopener">source</a></p>
+</section>
+
+<section class="fwd" id="fwdPanel" hidden aria-label="Forward pass">
+  <div class="fwd-grip" id="fwdGrip" role="separator" aria-orientation="horizontal" aria-label="Resize the field panel" tabindex="0" title="Drag to resize"><span></span></div>
+  <div class="fwd-top">
+    <div class="fwd-chips" id="fwdChips" aria-label="Tokens; click one to inspect it"></div>
+    <div class="fwd-views" id="fwdViews" role="tablist" aria-label="What the panel shows"><button type="button" role="tab" data-v="field" aria-selected="true" title="Every layer, head and MLP (1)">Field</button><button type="button" role="tab" data-v="river" aria-selected="false" title="The logit lens as a river: the guess forming, layer by layer (2)">River</button><button type="button" role="tab" data-v="flow" aria-selected="false" title="Where each word's information came from, through attention (3)">Flow</button><span class="info" tabindex="0" role="note" aria-label="About the three views">i<span class="tip"><b>Three ways to look at the same pass.</b> <b>Field</b>: every layer at once, each head's write strength and attention, every MLP neuron, and the logit lens's top guess. <b>River</b>: the logit lens for the token on screen as a river over depth, bottom to top the words it would say if it stopped there, each band as wide as its probability, so you see a guess appear, grow and get overtaken; the empty space above the bands is everything else in the vocabulary, and the white line is how unsure it is. Derived: the logit lens reads a middle layer through the model's final layers, which it was not trained for. <b>Flow</b>: tokens left to right, layers bottom to top; a line goes from an earlier token's state to a later one's wherever attention moves information between them: each attention weight times the size of the value vector it reads (what the token offers), averaged over the layer's heads. Weights alone mislead: many models park most of their attention on the first token, which offers almost nothing. Point at a state for both numbers. Real weights and values; their product is Derived (Kobayashi et al., 2020). With <b>Rollout</b> on, the cone in <span class="c">cyan</span> estimates how much each input token feeds the token on screen by the last layer (Abnar and Zuidema's attention rollout, on the flow above). The first token only attends to itself, so whatever reaches it stays there and rollout piles up on it; its share is given apart, in grey, and the shares shown are among the other tokens. Derived, an approximation that ignores what the MLPs do and how the heads' outputs combine.</span></span></div>
+    <div class="note" id="fwdHud"></div>
+    <button type="button" class="fwd-chevron" id="fwdHide" aria-label="Hide the field panel" title="Hide the panel and watch the cloud (P)"><kbd>P</kbd><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 4.5 6 8.5 10 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </div>
+  <div class="fwd-body">
+    <div class="fwd-controls">
+      <div class="section-k">Playback</div>
+      <div class="fwd-row"><button type="button" id="fwdPause" disabled>Pause</button><button type="button" id="fwdStep" disabled>Step layer</button></div>
+      <div class="fwd-row" id="fwdFlyRow"><button type="button" id="fwdFly" aria-pressed="false" title="Travel along the model's path, layer by layer (T)">Fly-through</button></div>
+      <div class="fwd-row" id="fwdStatesRow"><button type="button" id="fwdStates" aria-pressed="false" title="Show the hidden states as a space of their own (S)">Hidden states</button><button type="button" id="fwdRoll" aria-pressed="true" title="Attention rollout: the cone feeding the token on screen" hidden>Rollout</button><span class="info" tabindex="0" role="note" aria-label="About the hidden-state space">i<span class="tip"><b>The hidden states as a space of their own.</b> At every layer each token carries one long vector, its running state (the residual stream): hundreds to thousands of numbers that every head and MLP reads from and writes into. This replaces the word cloud with those states: one dot per token per depth, joined into a line from the embedding to the last layer, the path each token's meaning takes through the model. They are laid out by a PCA fitted on this run's states (each first centred and scaled, as the model's normalisation does; the first token, which most models treat as a resting place with outsized values, is drawn but left out of the fit), and the panel's readout says how much of their variation its three axes show. Each step of a line is one layer: the <span class="c">cyan</span> part is how much attention changed the state, the <span class="v">violet</span> part how much the MLP did, and the step is thicker the bigger the change compared with the state. Tokens that end up close have states the model treats alike. Point at a dot to read it; click one to put that token on screen. Derived: the states are real, the 3-D view of them is a projection.</span></span></div>
+      <div class="fwd-row" id="fwdAttrRow"><button type="button" id="fwdAttr" aria-pressed="false" title="Colour the field by what pushed the model toward a word (A)">Attribution</button><span class="info" tabindex="0" role="note" aria-label="About attribution">i<span class="tip"><b>Which parts pushed the model toward a word.</b> A word's score, its logit compared with the average word's, is what sets its odds. It is a sum of what every head and every MLP wrote into the model's running state, so it splits exactly into one share per part. <span class="c">Cyan</span> pushed toward the word, <span class="a">amber</span> pushed against it; the right-hand column adds up each layer. The word is the one written next. Click a row of the logit lens to explain that layer's guess instead. Only direct effects count: a head that matters by feeding later layers shows up in those layers, not here. Derived: exact, with the final normalisation's scale held at this token.</span></span></div>
+      <div class="fwd-row" id="fwdIvRow"><span class="iv-count" id="fwdIvCount">No changes</span><button type="button" id="fwdIvRun" disabled title="Run the same text through the changed model">Rerun</button><button type="button" id="fwdIvClear" disabled title="Undo every change and run the unchanged model">Clear</button><span class="info" tabindex="0" role="note" aria-label="About interventions">i<span class="tip"><b>Interventions: change the model and see what follows.</b> Shift-click a head, or press K over it, to knock it out; in the neuron inspector you can knock out a layer's MLP or a single neuron. Knocked-out parts get an <span class="a">amber ✕</span>. <b>Rerun</b> sends the same text through the changed model: the answer shows the unchanged model's answer beneath it, and the readout shows how likely the unchanged model's next word is now. Unlike attribution, this counts every route a part's effect can take, through later layers too. Knocking out sets a part's output to zero, a blunt change: a real model never sees a part fall completely silent.</span></span></div>
+      <div class="fwd-row" id="fwdCmpRow"><button type="button" id="fwdPin" disabled title="Keep this run to compare the next one with">Pin as A</button><span class="iv-count" id="fwdPinNote"></span><span class="info" tabindex="0" role="note" aria-label="About comparing runs">i<span class="tip"><b>Compare two runs: where do they part ways?</b> Pin a run as A, then run something else: change one word, switch Greedy to Sample, or knock parts out. The answer shows A's beneath, with the first difference underlined; tokens that differ are marked on the chips. In the field, the <b>Δ A</b> column shows, layer by layer, how far this run's internal state has moved from A's at the token on screen (0 = the same), and heads whose attention differs from A's get an <span class="a">amber outline</span>. The readout gives how likely A's next word is here. Positions are matched by index, so it is exact when both texts have the same number of tokens. Rerunning with interventions pins the unchanged run for you.</span></span></div>
+      <div class="fwd-row" id="fwdFeatRow" hidden><span class="note">Features: click a layer's label (EMB, L0, L1…)</span><span class="info" tabindex="0" role="note" aria-label="About features">i<span class="tip"><b>Features instead of neurons.</b> Click a layer's label on the left of the field to open its features: a sparse autoencoder (SAE) rewrites the model's state there as a sum of a few directions from a learned dictionary of 24,576. Each tends to mean one thing, where a single neuron responds to many. The first time you open a layer its dictionary (about 150 MB) streams from Hugging Face; after that it is kept in this browser. Available for GPT-2 small.</span></span></div>
+      <div class="fwd-row" id="fwdWhyRow"><label>Explain <input type="text" id="fwdWhy" placeholder="any word" spellcheck="false" autocomplete="off" aria-label="Explain why the model did or didn't pick this word" /></label></div>
+      <div class="fwd-row">
+        <label>Speed <select id="fwdSpeed"><option value="live">Live</option><option value="slow" selected>160 ms / layer</option><option value="slower">0.5 s / layer</option><option value="glacial">1.5 s / layer</option></select></label>
+      </div>
+      <div class="fwd-row">
+        <label>Tokens <input type="number" id="fwdCount" min="1" max="200" value="16" /></label>
+        <label><select id="fwdSample" aria-label="Decoding"><option value="greedy">Greedy</option><option value="sample">Sample</option></select></label>
+      </div>
+      <div class="fwd-row" id="fwdBackendRow" hidden>
+        <label>Run on <select id="fwdBackend" aria-label="Where the model runs"><option value="auto">GPU when available</option><option value="gpu8">GPU, 8-bit weights</option><option value="cpu">CPU only</option></select></label>
+        <span class="info" tabindex="0" role="note" aria-label="About running on the GPU">i<span class="tip"><b>The same model, on your graphics card.</b> Browsers that support WebGPU let this page run the model on the GPU: the same weights and the same steps as the CPU version, often many times faster, and with room for bigger models, since GPU memory isn't limited to the 4 GB a page gets for everything else. It is checked against the CPU version, which is checked against the reference implementation. When a model's 16-bit weights don't fit in the GPU's memory, it loads them as 8-bit integers instead (one scale per 64 weights), about half the size; the status line then says how far those weights are from the published ones. <b>GPU, 8-bit weights</b> asks for that directly; <b>CPU only</b> runs it on the processor, to compare or if your GPU struggles. Changing this loads the model again.</span></span>
+      </div>
+      <div class="note" id="fwdStatus">Open this view to load GPT-2.</div>
+    </div>
+    <div class="field-wrap"><canvas id="field" aria-label="Every layer and head of GPT-2 for the selected token"></canvas><aside class="nrn" id="nrn" hidden aria-label="Neuron inspector"></aside></div>
+  </div>
+</section>
+
+<button type="button" class="fwd-tab" id="fwdTab" hidden aria-label="Show the field panel"><svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M2 7.5 6 3.5 10 7.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Field<kbd>P</kbd></button>
+
+<dialog class="explain" id="explainDlg" aria-label="What am I seeing here?">
+  <button type="button" class="explain-x" id="explainClose" aria-label="Close">✕</button>
+  <iframe id="explainFrame" title="What am I seeing here?"></iframe>
+</dialog>
+
+<dialog class="hub drop" id="hubDlg" aria-labelledby="hubTitle">
+  <header class="hub-top">
+    <h2 id="hubTitle">Models</h2>
+    <div class="hub-tabs" role="tablist"><button type="button" role="tab" data-tab="find">Choose</button><button type="button" role="tab" data-tab="stored">Storage</button><button type="button" role="tab" data-tab="token">Token</button></div>
+    <button type="button" class="hub-x" id="hubClose" aria-label="Close">✕</button>
+  </header>
+  <section id="hubTab-find">
+    <div class="hub-sec st-line">Ready to use <span id="hubStoreLine"></span></div>
+    <ul class="hub-list hub-picks" id="hubPicks"></ul>
+    <div class="hub-sec hub-sec-hf">From Hugging Face <span>open-weights models, downloaded once into this browser</span></div>
+    <div class="hub-search">
+      <input id="hubQ" type="search" placeholder="Search models, or paste owner/name" aria-label="Search Hugging Face models" autocomplete="off" spellcheck="false" />
+      <select id="hubSort" aria-label="Sort"><option value="downloads">Most downloaded</option><option value="trendingScore">Trending</option><option value="likes">Most liked</option></select>
+    </div>
+    <div class="hub-chips" id="hubChips" aria-label="Model family"></div>
+    <label class="hub-all"><input type="checkbox" id="hubAll" /> Also show models it can't run yet, and why</label>
+    <p class="note" id="hubNote"></p>
+    <ol class="hub-list hub-scroll" id="hubList"></ol>
+  </section>
+  <section id="hubTab-check" hidden>
+    <button type="button" class="hub-back" id="hubBack">← Results</button>
+    <div id="hubCheck"></div>
+  </section>
+  <section id="hubTab-stored" hidden>
+    <p class="note" id="hubUsage"></p>
+    <ul class="hub-list" id="hubStored"></ul>
+  </section>
+  <section id="hubTab-token" hidden>
+    <p>Gated models (Llama 3.2, Gemma and others) need you to accept their licence on Hugging Face, then a token so this page can download them for you.</p>
+    <ol class="hub-steps">
+      <li>Open the model on Hugging Face and accept its licence.</li>
+      <li>Create a <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">read-only token ↗</a> (a fine-grained token with “read access to public gated repos” is enough).</li>
+      <li>Paste it here.</li>
+    </ol>
+    <div class="hub-search"><input id="hubToken" type="password" placeholder="hf_…" aria-label="Hugging Face token" autocomplete="off" spellcheck="false" /><button type="button" class="primary" id="hubTokenSave">Save</button></div>
+    <p class="note" id="hubTokenState"></p>
+    <p class="note" id="hubTokenMsg"></p>
+    <button type="button" id="hubTokenClear" hidden>Remove token</button>
+    <p class="note">The token is kept in this browser only and sent only to huggingface.co. Remove it here when you are done.</p>
+  </section>
+</dialog>
+
+<div class="loading" id="loading"><div><div class="pill accent">Latent Fovea</div><h2 class="load-name" id="loadName" hidden></h2><p class="q-about" id="loadAbout" hidden></p><p id="loadMsg">Loading…</p><progress id="loadBar" max="1" value="0" hidden></progress></div></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

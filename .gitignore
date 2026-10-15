@@ -1,0 +1,11 @@
+web/data/
+__pycache__/
+*.pyc
+*.whl
+
+# local tooling and build output
+.wrangler/
+.dev.vars
+.DS_Store
+node_modules/
+site/

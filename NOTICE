@@ -1,0 +1,53 @@
+Latent Fovea
+Copyright 2026 Recourse Software Inc. (KnowDrive.ai)
+
+This product includes software developed by Recourse Software Inc.
+(https://knowdrive.ai). Latent Fovea was designed and built by KnowDrive.ai,
+a product of Recourse Software Inc., and is licensed under the Apache License,
+Version 2.0 (see LICENSE).
+
+Redistributions and derivative works must keep this NOTICE file, as section 4(d)
+of the Apache License requires.
+
+-------------------------------------------------------------------------------
+Third-party work
+-------------------------------------------------------------------------------
+
+colibri
+  https://github.com/JustVugg/colibri
+  Copyright Vincenzo Fornaro. Licensed under the Apache License, Version 2.0.
+  The GLM-5.2 engine (web/glm/, tools/glm_*.py) uses colibri's technique, which
+  keeps the dense part of a mixture-of-experts model resident and streams the
+  routed experts from disk. It also reads colibri's int4/int8 container format
+  and its .coli_usage routing history. The code here is an independent WebGPU
+  and NumPy implementation; no colibri source is included.
+
+GPT-2 byte-pair encoding
+  https://github.com/openai/gpt-2
+  Copyright (c) 2019 OpenAI. Licensed under a modified MIT License.
+  web/bpe.js reimplements the GPT-2 encoder's byte-to-unicode mapping and
+  merge procedure.
+
+UMAP
+  https://github.com/lmcinnes/umap
+  Copyright (c) 2017, Leland McInnes. Licensed under the BSD 3-Clause License.
+  The data-set tools use umap-learn to build the layouts. kernel/umap.c and
+  web/umap.js are an independent implementation of the algorithm (McInnes,
+  Healy and Melville, 2018).
+
+Models and data
+  The repository contains no model weights or data sets. The tools fetch them
+  from their publishers, and each comes under its own licence, which the viewer
+  shows:
+  - GPT-2: OpenAI, MIT License.
+  - DistilGPT2: Hugging Face, Apache License 2.0.
+  - MDLM: Sahoo et al., Kuleshov Group, Cornell, Apache License 2.0.
+  - GLM-5.2: Z.ai, MIT License.
+  - GPT-2 sparse autoencoders: Joseph Bloom, MIT License. Feature descriptions
+    are fetched live from Neuronpedia (https://www.neuronpedia.org).
+  - Jina-CLIP-v2: Jina AI, CC BY-NC 4.0. It produced the vectors of the
+    KnowDrive store data set.
+
+Fonts
+  Plus Jakarta Sans and JetBrains Mono, SIL Open Font License 1.1, served by
+  Google Fonts. The fonts are not included.

@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Recourse Software Inc.
+# Builds the model data set (downloads open weights from Hugging Face) and
+# publishes it to the orphan `data` branch, which tools/get_data.sh fetches.
+name: build-data
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: Comma-separated model keys from tools/build_data.py (added to or replacing those already on the data branch)
+        default: mdlm
+      projection:
+        description: umap or pca
+        default: umap
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install numpy==2.* umap-learn==0.5.*
+      - name: PyTorch (only needed for checkpoints without safetensors)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Start from the models already built
+        run: |
+          mkdir -p out
+          if git fetch --depth 1 origin data 2>/dev/null; then git --work-tree=out checkout FETCH_HEAD -- . && git reset -q; fi
+          rm -rf out/.git out/README.md
+          ls out
+      - name: Build
+        run: |
+          for m in $(echo "${{ inputs.models }}" | tr ',' ' '); do
+            rm -rf "out/$m"
+            python tools/build_data.py --model "$m" --projection "${{ inputs.projection }}" --out "out/$m" --weights
+          done
+          python tools/build_data.py --registry out
+      - name: Publish to the data branch
+        run: |
+          cd out
+          git init -q -b data
+          git config user.name "latent-fovea bot"
+          git config user.email "actions@users.noreply.github.com"
+          printf '# latent-fovea data\n\nBuilt by .github/workflows/build-data.yml from %s. See each meta.json for source and licence.\n' "$GITHUB_SHA" > README.md
+          git add -A
+          git commit -q -m "Data: ${{ inputs.models }} (${{ inputs.projection }}) from $GITHUB_SHA"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data:data

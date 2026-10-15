@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: Apache-2.0
+     Copyright 2026 Recourse Software Inc. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="author" content="Recourse Software Inc. (KnowDrive.ai)" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GLM-5.2 · Latent Fovea</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+:root { color-scheme: dark; --ground: #08080e; --panel: rgba(14,14,24,.82); --line: rgba(143,130,238,.18); --line-strong: rgba(143,130,238,.34);
+  --text: #e8e6f5; --muted: #9a97b3; --faint: #66637e; --purple: #6c5ce7; --lift: #8f82ee; --cyan: #35e0e6; --amber: #f2b56b;
+  --display: 'Plus Jakarta Sans', system-ui, sans-serif; --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+* { box-sizing: border-box; } [hidden] { display: none !important; }
+body { margin: 0; background: var(--ground); color: var(--text); font: 14px/1.5 var(--display); min-height: 100vh; }
+a { color: var(--cyan); }
+header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 16px 20px; }
+.pill { font: 500 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px 10px; color: var(--muted); text-decoration: none; }
+.pill.accent { background: var(--purple); border-color: var(--purple); color: #fff; }
+.pill.cyan { color: var(--cyan); border-color: rgba(53,224,230,.5); }
+.logo { width: 28px; height: 28px; border-radius: 6px; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; padding: 0 20px 24px; }
+@media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+h1 { margin: 2px 0 2px; font: 700 26px/1.2 var(--display); } .sub { margin: 0 0 14px; color: var(--muted); font: 12px var(--mono); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.k { font: 500 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; }
+.note { color: var(--muted); font-size: 12.5px; }
+button, select { font: 600 12px var(--mono); color: #fff; background: var(--purple); border: 1px solid var(--purple); border-radius: 10px; padding: 8px 14px; cursor: pointer; }
+button.ghost, select { background: transparent; border-color: var(--line-strong); color: var(--text); }
+button:disabled { opacity: .45; cursor: default; }
+progress { width: 100%; height: 6px; accent-color: var(--cyan); }
+/* the Query window, as in the model views */
+.query { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; margin: 8px auto 18px; max-width: 760px; }
+.q-kicker { margin: 0; font: 500 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--lift); }
+.q-bar { width: 100%; display: flex; gap: 8px; padding: 8px; border-radius: 16px; border: 1px solid var(--line-strong); background: rgba(14,14,24,.88); box-shadow: 0 20px 60px rgba(108,92,231,.22); }
+.q-bar:focus-within { border-color: var(--lift); }
+#q { flex: 1; min-width: 0; border: 0; background: transparent; font: 600 20px/1.3 var(--display); color: #fff; padding: 8px 10px; outline: none; }
+.q-examples { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.q-examples button { font: 500 12px var(--mono); color: var(--muted); background: rgba(14,14,24,.7); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+.q-hint { margin: 0; color: var(--faint); font-size: 11.5px; }
+#answer { font: 500 15px/1.6 var(--mono); white-space: pre-wrap; min-height: 2em; }
+#answer .p { color: var(--muted); } #answer .draft { color: var(--faint); font-style: italic; margin-left: 3px; padding-left: 4px; border-left: 1px dotted var(--line-strong); } #answer .now { color: var(--cyan); border-bottom: 1px dashed var(--cyan); }
+#experts { width: 100%; height: auto; display: block; image-rendering: pixelated; border-radius: 8px; border: 1px solid var(--line); background: #06060b; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font: 11px var(--mono); color: var(--muted); margin-top: 8px; }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.stat .v { font: 600 17px var(--mono); } .stat .l { font: 10px var(--mono); color: var(--faint); letter-spacing: .1em; text-transform: uppercase; }
+#lens div { display: grid; grid-template-columns: 38px 1fr 54px; gap: 8px; font: 12px var(--mono); padding: 2px 0; }
+#lens .d { color: var(--faint); } #lens .w { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } #lens .p { color: var(--muted); text-align: right; }
+#att { width: 100%; height: 160px; display: block; border-radius: 8px; border: 1px solid var(--line); background: #06060b; }
+#tip { position: fixed; pointer-events: none; background: rgba(8,8,14,.95); border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 9px; font: 11.5px var(--mono); z-index: 9; }
+.side { display: flex; flex-direction: column; gap: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <img class="logo" src="kd-logo.jpg" alt="KnowDrive" />
+  <a class="pill accent" href="./">Latent Fovea</a>
+  <span class="pill cyan">GLM-5.2 · 744B MoE</span>
+  <a class="pill" href="real.html#ch-glm">What am I seeing here?</a>
+</header>
+<main>
+  <section>
+    <h1>GLM-5.2, streamed from your SSD</h1>
+    <p class="sub" id="sub">744 billion parameters; about 40 billion take part in each token. The attention and shared parts stay on your GPU; the 19,200 routed experts stay on your drive and are read as the router asks for them.</p>
+
+    <div class="card" id="setup">
+      <div class="k">Set up</div>
+      <p class="note">Pick the folder holding colibri's GLM-5.2 container (<code>mastouri/GLM-5.2-colibri-int4-g64-with-int8-mtp</code>, ~419 GB), for example on an external SSD. Nothing is copied: the browser reads the bytes it needs, where they are. Your browser asks once for permission to read the folder.</p>
+      <p style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button id="pick">Choose the model folder</button>
+        <label class="note">Expert cache on the GPU
+          <select id="pool"><option value="13">13 GB (minimum)</option><option value="16" selected>16 GB</option><option value="24">24 GB</option></select></label>
+        <label class="note">Preview ahead
+          <select id="draftSel" title="The next few words, drafted in about half a second each from the experts already on the GPU (a missing expert is stood in for by its nearest resident neighbour) and shown faintly until the exact words arrive. Measured on GLM-5.2: the draft's first word is exactly right 69% of the time, and in its top three 92%."><option value="0">off</option><option value="1">1 word</option><option value="4" selected>4 words</option></select></label>
+        <label class="note">Read ahead
+          <select id="aheadSel" title="Measured on a USB SSD: the guesses are 79% right, but the drive is already busy, so the extra reads cost more than they save (about 31 s per token against 22.5 s). Worth trying on a faster drive."><option value="0" selected>off</option><option value="8">next layer's top 8</option><option value="10">top 8 + 2 spare</option></select></label>
+        <label class="note">and in RAM
+          <select id="ramSel"><option value="0">none</option><option value="8">8 GB</option><option value="12" selected>12 GB</option><option value="16">16 GB</option><option value="20">20 GB</option></select></label>
+      </p>
+      <p class="note" id="memNote" hidden></p>
+      <progress id="bar" hidden max="1" value="0"></progress>
+      <p class="note" id="msg"></p>
+    </div>
+
+    <form class="query" id="query" hidden autocomplete="off">
+      <p class="q-kicker" id="kicker">GLM-5.2 · 744B MoE · running in your browser</p>
+      <div class="q-bar"><input id="q" placeholder="Ask GLM-5.2" aria-label="Your question" spellcheck="false" /><button id="go">Run</button></div>
+      <div class="q-examples" id="ex">
+        <button type="button">What is the capital of France?</button>
+        <button type="button">Write a haiku about the sea.</button>
+        <button type="button">def fibonacci(n):</button>
+        <button type="button">Spiega in una frase cos'è un modello mixture-of-experts.</button>
+      </div>
+      <p class="q-hint">Each token reads its experts from your drive: expect seconds to minutes per token, faster as the cache warms.</p>
+    </form>
+
+    <div class="card" id="answerCard" hidden><div class="k"><span>Answer</span><span id="tps"></span></div><div id="answer"></div></div>
+
+    <div class="card" id="expCard" hidden style="margin-top:14px">
+      <div class="k"><span>Experts · 75 MoE layers × 256 experts, this token · <a href="./#glm52-experts~embeddings" target="_blank" rel="noopener">see them as a cloud ↗</a></span><span id="expInfo"></span></div>
+      <canvas id="experts" width="768" height="450"></canvas>
+      <div class="legend"><span><i style="background:#35e0e6"></i>chosen, already on the GPU</span><span><i style="background:#7be08a"></i>chosen, read ahead in time</span><span><i style="background:#ef6fa6"></i>chosen, from RAM</span><span><i style="background:#f2b56b"></i>chosen, read from the SSD</span><span><i style="background:#3a2f7a"></i>held in the GPU cache</span><span><i style="background:#1b1830"></i>routed earlier this session (brighter = more)</span></div>
+    </div>
+  </section>
+
+  <aside class="side" id="side" hidden>
+    <div class="card"><div class="k">This token</div>
+      <div class="stats">
+        <div class="stat"><div class="v" id="sMs">–</div><div class="l">seconds</div></div>
+        <div class="stat"><div class="v" id="sHit">–</div><div class="l">experts: cached / read ahead / RAM / SSD</div></div>
+        <div class="stat"><div class="v" id="sRead">–</div><div class="l">GB read from SSD</div></div>
+        <div class="stat"><div class="v" id="sRate">–</div><div class="l">MB/s from SSD</div></div>
+      </div>
+    </div>
+    <div class="card"><div class="k">Session</div>
+      <div class="stats">
+        <div class="stat"><div class="v" id="tTok">–</div><div class="l">tokens</div></div>
+        <div class="stat"><div class="v" id="tHit">–</div><div class="l">cache hit rate</div></div>
+        <div class="stat"><div class="v" id="tRead">–</div><div class="l">GB read</div></div>
+        <div class="stat"><div class="v" id="tPool">–</div><div class="l">GB of experts in RAM</div></div>
+        <div class="stat"><div class="v" id="tAhead">–</div><div class="l">read-ahead: guessed right · used / read</div></div>
+      </div>
+      <p style="margin:10px 0 0"><button class="ghost" id="warm" hidden>Warm the cache from colibri's routing history</button></p>
+    </div>
+    <div class="card"><div class="k"><span>Logit lens · next word, by depth</span></div><div id="lens" class="note">–</div></div>
+    <div class="card"><div class="k"><span>Attention · layer × earlier token</span></div><canvas id="att" width="600" height="160"></canvas></div>
+  </aside>
+</main>
+<footer style="margin:24px 16px;font:11px var(--mono);opacity:.6">Latent Fovea by <a href="https://knowdrive.ai">KnowDrive.ai</a>, Recourse Software Inc. · Apache-2.0 · <a href="https://github.com/Recourse-Software-Inc/latent-fovea">source</a> · experts streamed with the technique and container format of colibri by Vincenzo Fornaro (Apache-2.0) · GLM-5.2 by Z.ai (MIT)</footer>
+<div id="tip" hidden></div>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const w = new Worker('glm/glm-worker.js', { type: 'module' });
+let drafts = [], draftStats = { right: 0, n: 0 };
+let info = null, running = false, out = [], pending = '', session = { tokens: 0, hits: 0, misses: 0, read: 0 };
+const heat = new Map();  // layer*E+e -> times routed
+const resident = new Set();
+let lastExperts = null, lastTokens = [];
+
+// ---- the folder: remembered between visits (IndexedDB), permission asked again when needed
+const db = () => new Promise((res, rej) => { const r = indexedDB.open('lf-glm', 1); r.onupgradeneeded = () => r.result.createObjectStore('h'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+const saveHandle = async (h) => { try { const d = await db(); d.transaction('h', 'readwrite').objectStore('h').put(h, 'dir'); } catch {} };
+const loadHandle = async () => { try { const d = await db(); return await new Promise((res) => { const q = d.transaction('h').objectStore('h').get('dir'); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch { return null; } };
+
+function openWith(msg) {
+  $('pick').disabled = true; $('bar').hidden = false; $('msg').textContent = 'Reading the shards\' headers…';
+  w.postMessage({ type: 'open', expertBudget: +$('pool').value * 1e9, ramBudget: +(params.get('ram') ?? $('ramSel').value) * 1e9, prefetchAhead: +(params.get('ahead') ?? $('aheadSel').value), ...msg });
+}
+$('pick').onclick = async () => {
+  try {
+    let h = await loadHandle();
+    if (h && (await h.requestPermission({ mode: 'read' })) !== 'granted') h = null;
+    if (!h) { h = await showDirectoryPicker({ id: 'glm52', mode: 'read' }); await saveHandle(h); }
+    openWith({ dir: h });
+  } catch (e) { if (e.name !== 'AbortError') $('msg').textContent = e.message; }
+};
+(async () => {
+  // Apple GPUs share one memory with the CPU: a RAM tier there takes the same gigabytes the GPU cache
+  // would use (and pushes the machine into swap). Off by default; give the GPU cache more instead.
+  try {
+    const ad = await navigator.gpu?.requestAdapter();
+    if (ad && /apple/i.test(ad.info?.vendor || '')) {
+      $('ramSel').value = '0';
+      $('memNote').hidden = false;
+      $('memNote').textContent = 'This GPU shares its memory with the rest of the computer, so a separate RAM tier would only take space from the GPU cache: it is off. Leave room for your other apps: the page needs about 11 GB plus the cache you choose.';
+    }
+  } catch {}
+  if (params.get('data')) {  // tests: a container served over HTTP
+    // ?shards=N names out-00000…: a whole container served by the dev server (tests on the real model)
+    const shards = +params.get('shards') || 0;
+    const names = shards ? ['config.json', 'tokenizer.json', '.coli_usage', ...Array.from({ length: shards }, (_, i) => `out-${String(i).padStart(5, '0')}.safetensors`)]
+      : (params.get('files') || 'config.json,out-00000.safetensors,tokenizer.json').split(',');
+    return openWith({ url: new URL(`data/${params.get('data')}/`, location.href).href, names });  // absolute: the worker lives in glm/
+  }
+  const h = await loadHandle();
+  if (h) { $('pick').textContent = `Open “${h.name}” again`; if ((await h.queryPermission({ mode: 'read' })) === 'granted') openWith({ dir: h }); }
+  if (!window.showDirectoryPicker) { $('pick').disabled = true; $('msg').textContent = 'This needs a browser that can read a folder you pick (Chrome or Edge).'; }
+})();
+
+// ---- worker messages
+w.onmessage = ({ data: m }) => {
+  if (m.type === 'progress') {
+    $('bar').value = m.total ? m.done / m.total : 0;
+    $('msg').textContent = m.stage === 'prewarm' ? `Warming the cache: ${m.done} of ${m.total} experts` : `Loading the resident part onto the GPU: ${m.done} of ${m.total} weights`;
+  } else if (m.type === 'ready') {
+    info = m; $('setup').hidden = true; $('query').hidden = false; $('side').hidden = false; $('expCard').hidden = false;
+    $('warm').hidden = !m.hasUsage;
+    $('kicker').textContent = `GLM-5.2 · ${m.L} layers · ${m.E} experts per layer, ${m.K} per token · running in your browser`;
+    $('sub').textContent = `${(m.gpuBytes / 1e9).toFixed(1)} GB on the GPU (the resident part, plus room for ${m.nSlots.toLocaleString()} experts of ${(m.slotBytes / 1e6).toFixed(1)} MB), and room for ${(m.ramPer * (m.L - m.dense)).toLocaleString()} more in RAM. Context up to ${m.maxT.toLocaleString()} tokens.`;
+    drawExperts(); setTimeout(() => $('q').focus(), 50);
+  } else if (m.type === 'prewarmed') {
+    $('warm').disabled = false; $('warm').textContent = `Cache warmed: ${m.resident} experts on the GPU`; $('msg').textContent = '';
+  } else if (m.type === 'drafts') { drafts = m.words; renderAnswer(); }
+  else if (m.type === 'prefill') $('answer').innerHTML = `<span class="p">Reading your question (${m.n} tokens at once): layer ${m.layer + 1} of ${m.L}…</span>`;
+  else if (m.type === 'token') onToken(m);
+  else if (m.type === 'done') { running = false; $('go').textContent = 'Run'; $('tps').textContent = `${m.tokens} tokens in ${(m.ms / 1000).toFixed(0)} s` + (draftStats.n ? ` · previews right first time: ${draftStats.right}/${draftStats.n}` : ''); renderAnswer(); }
+  else if (m.type === 'error') { running = false; $('go').textContent = 'Run'; $('pick').disabled = false; $('msg').textContent = m.message; $('answer').textContent += `\n[${m.message}]`; }
+};
+$('warm').onclick = () => { $('warm').disabled = true; $('warm').textContent = 'Warming…'; w.postMessage({ type: 'prewarm' }); };
+
+// ---- asking
+const template = (text) => `[gMASK]<sop><|user|>${text}<|assistant|><think></think>`;
+$('query').onsubmit = (e) => {
+  e.preventDefault();
+  if (running) { w.postMessage({ type: 'stop' }); return; }
+  const text = $('q').value.trim(); if (!text || !info) return;
+  running = true; $('go').textContent = 'Stop'; $('answerCard').hidden = false; $('answer').innerHTML = '<span class="p">Reading your question…</span>';
+  out = []; lastTokens = [];
+  const depths = []; for (let d = 0; d <= info.L; d += 13) depths.push(d); if (depths[depths.length - 1] !== info.L) depths.push(info.L);
+  w.postMessage({ type: 'generate', prompt: template(text), max: +(params.get('max') || 128), temperature: 0, lensDepths: depths, draftAhead: +(params.get('draft') ?? $('draftSel').value) });
+  drafts = []; draftStats = { right: 0, n: 0 };
+};
+$('ex').onclick = (e) => { const b = e.target.closest('button'); if (b) { $('q').value = b.textContent; $('query').requestSubmit(); } };
+
+const chan = new BroadcastChannel('lf-glm');  // an open expert cloud (index.html, GLM-5.2 experts) follows along
+function onToken(m) {
+  if (m.next != null) chan.postMessage({ type: 'token', text: m.text, experts: m.experts, scores: m.scores });  // the token whose routing this is
+  session.hits += m.hits + m.ramHits + m.preHits; session.misses += m.misses; session.read += m.readBytes; session.ram = m.ramBytes;
+  lastTokens.push(m.text);
+  lastExperts = m.experts;
+  m.experts.forEach((ch, l) => ch.forEach(([e, , tier]) => { const k = l * info.E + e; heat.set(k, (heat.get(k) || 0) + 1); resident.add(k); }));
+  if (m.next != null) {
+    session.tokens++;
+    if (!m.prompt) out.push(m.text);
+    if (drafts.length && m.nextText != null && !m.prompt) { draftStats.n++; if (drafts[0] === m.nextText) draftStats.right++; }  // the preview's first word vs the exact one
+    drafts = []; lastNext = running ? m.nextText || '' : '';
+    renderAnswer();
+    if (m.lens) drawLens(m.lens, m.depths);
+    if (m.att) drawAtt(m.att);
+  } else $('answer').innerHTML = `<span class="p">Reading your question: token ${m.pos + 1}…</span>`;
+  $('sMs').textContent = (m.ms / 1000).toFixed(1);
+  $('sHit').textContent = `${m.hits} / ${m.preHits} / ${m.ramHits} / ${m.misses}`;
+  session.pred = (session.pred || 0) + m.predicted; session.right = (session.right || 0) + m.predictedRight;
+  session.pre = (session.pre || 0) + m.prefetched; session.preUsed = (session.preUsed || 0) + m.preHits;
+  $('tAhead').textContent = session.pred ? `${Math.round(100 * session.right / session.pred)}% · ${session.preUsed}/${session.pre}` : '–';
+  $('sRead').textContent = (m.readBytes / 1e9).toFixed(2);
+  $('sRate').textContent = m.readMs > 0 ? Math.round(m.readBytes / 1e6 / (m.readMs / 1000)) : '–';
+  $('tTok').textContent = session.tokens;
+  $('tHit').textContent = session.hits + session.misses ? `${Math.round(100 * session.hits / (session.hits + session.misses))}%` : '–';
+  $('tRead').textContent = (session.read / 1e9).toFixed(1);
+  $('tPool').textContent = ((session.ram || 0) / 1e9).toFixed(1);
+  $('expInfo').textContent = `${m.hits + m.ramHits + m.misses} experts · ${m.ramHits} from RAM · ${m.misses} read from the SSD`;
+  drawExperts();
+}
+let lastNext = '';
+function renderAnswer() {  // exact words sharp; the next exact word underlined; the preview faint
+  $('answer').innerHTML = esc(out.join('')) + (lastNext ? `<span class="now">${esc(lastNext)}</span>` : '')
+    + (drafts.length && running ? `<span class="draft" title="Preview: drafted from the experts already on the GPU; replaced by the exact words as they arrive">${esc(drafts.join(''))}</span>` : '');
+  if (draftStats.n) $('tps').textContent = `previews right first time: ${draftStats.right}/${draftStats.n}`;
+}
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+// ---- views
+function drawExperts() {
+  const cv = $('experts'), c = cv.getContext('2d'), E = info.E, rows = info.L - info.dense;
+  const cw = cv.width / E, ch = cv.height / rows;
+  c.fillStyle = '#06060b'; c.fillRect(0, 0, cv.width, cv.height);
+  let mx = 1; for (const v of heat.values()) mx = Math.max(mx, v);
+  for (const [k, v] of heat) {
+    const l = Math.floor(k / E) - info.dense, e = k % E;
+    const a = 0.15 + 0.6 * Math.sqrt(v / mx);
+    c.fillStyle = `rgba(108,92,231,${a})`; c.fillRect(e * cw, l * ch, Math.max(1, cw - 0.5), Math.max(1, ch - 0.5));
+  }
+  if (lastExperts) lastExperts.forEach((chs, l) => chs.forEach(([e, wt, tier]) => {
+    c.fillStyle = tier === 'ssd' ? '#f2b56b' : tier === 'ram' ? '#ef6fa6' : tier === 'pre' ? '#7be08a' : '#35e0e6';
+    c.fillRect(e * cw - 0.5, (l - info.dense) * ch - 0.5, cw + 1, ch + 1);
+  }));
+}
+function drawLens(lens, depths) {
+  $('lens').innerHTML = lens.map((r, k) => {
+    const t = r.top[0];
+    return `<div><span class="d">${depths[k] === 0 ? 'emb' : 'L' + depths[k]}</span><span class="w">${esc(JSON.stringify(t.text ?? '').slice(1, -1))}</span><span class="p">${(100 * t.p).toFixed(1)}%</span></div>`;
+  }).join('');
+}
+function drawAtt(att) {
+  const cv = $('att'), c = cv.getContext('2d'), L = att.length, T = att[0].length;
+  c.fillStyle = '#06060b'; c.fillRect(0, 0, cv.width, cv.height);
+  const cw = cv.width / T, chh = cv.height / L;
+  for (let l = 0; l < L; l++) {
+    let mx = 1e-9; for (const v of att[l]) mx = Math.max(mx, v);
+    for (let t = 0; t < T; t++) { const a = att[l][t] / mx; if (a < 0.02) continue; c.fillStyle = `rgba(53,224,230,${a})`; c.fillRect(t * cw, l * chh, Math.ceil(cw), Math.ceil(chh)); }
+  }
+}
+// expert tooltip
+$('experts').onmousemove = (e) => {
+  if (!info) return;
+  const r = e.target.getBoundingClientRect(), E = info.E, rows = info.L - info.dense;
+  const ex = Math.floor((e.clientX - r.left) / r.width * E), l = Math.floor((e.clientY - r.top) / r.height * rows) + info.dense;
+  const n = heat.get(l * E + ex) || 0, cur = lastExperts?.[l]?.find(([x]) => x === ex);
+  $('tip').hidden = false; $('tip').style.left = e.clientX + 12 + 'px'; $('tip').style.top = e.clientY + 12 + 'px';
+  $('tip').textContent = `layer ${l} · expert ${ex} · routed ${n}× this session${cur ? ` · now: weight ${cur[1].toFixed(3)}, ${cur[2] === 'ssd' ? 'read from the SSD' : 'from the GPU cache'}` : ''}`;
+};
+$('experts').onmouseleave = () => { $('tip').hidden = true; };
+</script>
+</body>
+</html>
