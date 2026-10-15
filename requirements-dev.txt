@@ -1,5 +1,5 @@
 # The reference checks (tools/ref_*.py, glm_ref.py) and checkpoints without safetensors.
 -r requirements.txt
-torch>=2.4
+torch>=2.14.1
 transformers>=4.46
 huggingface_hub>=0.26
