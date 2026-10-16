@@ -23,7 +23,6 @@ Pick the model from the **Model** menu at the top left. The choice is kept in th
 | **GPT-2 small**, OpenAI | 124M | MIT | The classic interpretability subject. 12 layers. |
 | **DistilGPT2**, Hugging Face | 82M | Apache-2.0 | GPT-2 distilled to 6 layers with the same vocabulary. Compare how shallower "thinking" looks on the same query. |
 | **MDLM** (OpenWebText), Kuleshov Group, Cornell | 169M | Apache-2.0 | A **masked diffusion** language model. It doesn't write left to right: the whole answer starts as `[MASK]` and words lock in over denoising steps, in any order. |
-| **Canada 2025/26 Public Data**, a KnowDrive store | 391,922 atoms | Canadian public records | Not a language model: a **retrieval store**, read as one attention layer without a decoder. See below. On the live demo; not in the prebuilt data. |
 
 Every language model shows its token-embedding matrix (for GPT-2, `wte`: 50,257 tokens × 768 dimensions, the model's first latent space) and runs live in the forward-pass view. `tools/build_data.py` lists the models (`MODELS`), and `web/data/models.json` is the registry the picker reads. The **build-data** workflow takes a comma-separated list of models to build.
 
@@ -45,7 +44,7 @@ Checked against transformers on the same dequantized weights (`tools/glm_ref.py`
 
 ### A KnowDrive store: attention without a decoder
 
-A retrieval store scores a question against a fixed set of keys, masks some out, and reads from the best: what one attention head does, with no weights and nothing generated. **Canada 2025/26 Public Data** is a public KnowDrive store of Canadian government records: 391,922 atoms (passages) from 12,090 files on lobbying, spending, registries, elections, proceedings, legislation and tariffs, each a 1,024-number Jina-CLIP-v2 vector. The atoms are the cloud, coloured by domain and labelled by their three most distinctive words; the inspector shows the passage, its file and tags; neighbours are exact. **Ask the store** picks an example question: arcs to the page each head returns (Vector, Full-text, Hybrid), the recall shape, the tags the page carries, and **Distances from the question**, every atom at its exact cosine distance with a ring at the page's edge. Click a legend domain to mask it: masked atoms fade in place and the vector page is re-ranked over what is left. The vector head is recomputed in the browser from a query vector recovered from KnowDB's own scores (it reproduces all 1,500 of them to 2×10⁻⁷, and the browser's top 50 matches KnowDB's in order for all ten example questions); full-text and hybrid are KnowDB's lists, replayed. Handbook, Chapter 18. (KnowDB is KnowDrive's retrieval engine. This data set is on the live demo but not in the prebuilt data.)
+A retrieval store scores a question against a fixed set of keys, masks some out, and reads from the best: what one attention head does, with no weights and nothing generated. A KnowDrive store built with the tools below (it needs a KnowDrive account) opens in the model menu like any model: each atom (a passage of a file) is one vector, 1,024 numbers for a store embedded with Jina-CLIP-v2. The atoms are the cloud, coloured by domain and labelled by their three most distinctive words; the inspector shows the passage, its file and tags; neighbours are exact. **Ask the store** picks an example question: arcs to the page each head returns (Vector, Full-text, Hybrid), the recall shape, the tags the page carries, and **Distances from the question**, every atom at its exact cosine distance with a ring at the page's edge. Click a legend domain to mask it: masked atoms fade in place and the vector page is re-ranked over what is left. The vector head is recomputed in the browser from a query vector recovered from KnowDB's own scores (on a 391,922-atom store it reproduced all 1,500 of them to 2×10⁻⁷, and the browser's top 50 matched KnowDB's in order for all ten example questions); full-text and hybrid are KnowDB's lists, replayed. Handbook, Chapter 18. (KnowDB is KnowDrive's retrieval engine.) No store data set is published with Latent Fovea.
 
 ## What you see
 
@@ -233,9 +232,9 @@ Each build also rewrites `web/data/models.json`, the registry the model picker r
 A KnowDrive store is built from the store itself. This needs a KnowDrive account and a read token for the store, in `~/.cache/latent-fovea/token` or `$KNOWDRIVE_TOKEN` (never committed):
 
 ```bash
-node tools/fetch_kdstore.mjs --store vs_… --out ~/.cache/latent-fovea/kdstore-canada     # every atom with its vector; resumable
-python3 tools/build_kdstore.py --cache ~/.cache/latent-fovea/kdstore-canada --out web/data/canada --name "Canada 2025/26 Public Data"
-python3 tools/kd_queries.py --data web/data/canada --cache ~/.cache/latent-fovea/kdstore-canada --store vs_…   # example questions
+node tools/fetch_kdstore.mjs --store vs_… --out ~/.cache/latent-fovea/kdstore-mystore     # every atom with its vector; resumable
+python3 tools/build_kdstore.py --cache ~/.cache/latent-fovea/kdstore-mystore --out web/data/mystore --name "My store"
+python3 tools/kd_queries.py --data web/data/mystore --cache ~/.cache/latent-fovea/kdstore-mystore --store vs_…   # example questions
 ```
 
 ### Rebuild the kernel
@@ -289,8 +288,8 @@ Latent Fovea is designed and built by KnowDrive.ai, Recourse Software Inc. Copyr
 - **GPT-2 byte-pair encoding**: `web/bpe.js` contains portions translated from OpenAI's GPT-2 encoder (Modified MIT licence, reproduced in NOTICE).
 - **UMAP** (McInnes, Healy and Melville; [umap-learn](https://github.com/lmcinnes/umap), BSD-3-Clause) builds the layouts in `tools/`; `kernel/umap.c` is an independent implementation for the browser.
 - **GPT-2 sparse autoencoders** by Joseph Bloom (MIT), with feature descriptions from [Neuronpedia](https://www.neuronpedia.org).
-- **Jina-CLIP-v2** by Jina AI (CC BY-NC 4.0) produced the KnowDrive store's vectors; the data set holds those vectors, not the model.
-- **Fonts**: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License), served by Google Fonts.
+- **Jina-CLIP-v2** by Jina AI (CC BY-NC 4.0) embeds the KnowDrive stores the store tools read; a store data set holds those vectors, not the model.
+- **Fonts**: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License 1.1), served from the site itself (`web/fonts/`), so pages make no requests to Google.
 
 GPT-2 weights © OpenAI, released under the MIT licence ([model card](https://huggingface.co/openai-community/gpt2)). DistilGPT2 by Hugging Face, released under Apache-2.0 ([model card](https://huggingface.co/distilbert/distilgpt2)). MDLM by Sahoo et al., Kuleshov Group, Cornell, released under Apache-2.0 ([code](https://github.com/kuleshov-group/mdlm), [weights](https://huggingface.co/kuleshov-group/mdlm-owt)). The data set records the exact tensor and its SHA-256 in `meta.json`; each folder of the prebuilt data carries its model's licence.
 

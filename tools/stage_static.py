@@ -29,7 +29,7 @@ for f in os.listdir(root):
     if f in ("glm-test.html", "glm-test.js"): continue  # a local self-check (needs fixtures under data/)
     if f.endswith((".js", ".wasm", ".css", ".jpg")) or f == "verified.json" or f.endswith(".html"):
         shutil.copy(os.path.join(root, f), a.out)
-for sub in ("glm",):  # code in subfolders (the GLM-5.2 engine and worker)
+for sub in ("glm", "fonts"):  # subfolders: the GLM-5.2 engine and worker, the fonts
     if os.path.isdir(os.path.join(root, sub)):
         shutil.copytree(os.path.join(root, sub), os.path.join(a.out, sub))
 

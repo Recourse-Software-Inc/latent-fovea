@@ -79,5 +79,7 @@ Models and data
     KnowDrive store data set.
 
 Fonts
-  Plus Jakarta Sans and JetBrains Mono, SIL Open Font License 1.1, served by
-  Google Fonts. The fonts are not included.
+  Plus Jakarta Sans (Copyright 2020 The Plus Jakarta Sans Project Authors) and
+  JetBrains Mono (Copyright 2020 The JetBrains Mono Project Authors), SIL Open
+  Font License 1.1. Their variable woff2 files are included in web/fonts/
+  (from the Fontsource packages), with the licence texts beside them.

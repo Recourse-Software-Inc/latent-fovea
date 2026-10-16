@@ -8,9 +8,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Is It Real?</title>
 <meta name="description" content="What in Latent Fovea is the model's real latent space, what is derived from it, and what is illustration." />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" />
+<link rel="stylesheet" href="fonts/fonts.css" />
 <style>
 :root {
   color-scheme: dark;
@@ -888,7 +886,7 @@ h2:hover .anchor, h3:hover .anchor, .anchor:focus { opacity: 1; }
     <p class="kicker">Chapter 18</p>
     <h2>Attention without a decoder: a KnowDrive store</h2>
     <p class="goal">A retrieval store does what one attention head does: it scores a query against a fixed set of keys, masks some of them out, and reads from the best. It has no weights and writes nothing, but its key space can be explored exactly like a vocabulary.</p>
-    <p>The model menu lists <b>Canada 2025/26 Public Data</b>, a KnowDrive store of 391,922 <b>atoms</b> drawn from 12,090 files: lobbying registrations, government spending, registries, elections, parliamentary proceedings, legislation and tariff notices. An atom is a passage of a file (a heading and its paragraph, a table, a speech), stored as one 1,024-number vector made by the Jina-CLIP-v2 embedding model. A model's vocabulary is a fixed set of vectors with labels, and so is a store, so most of Part II applies unchanged.</p>
+    <p>A KnowDrive store built into a data set (with <code>tools/build_kdstore.py</code>, which needs a KnowDrive account) appears in the model menu. Its points are <b>atoms</b>. An atom is a passage of a file (a heading and its paragraph, a table, a speech), stored as one 1,024-number vector made by the Jina-CLIP-v2 embedding model. A model's vocabulary is a fixed set of vectors with labels, and so is a store, so most of Part II applies unchanged.</p>
     <h3>18.1 What carries over, and what changes</h3>
     <table class="keys-table">
       <tr><th>In a transformer</th><th>In the store</th><th>Where you see it</th></tr>
@@ -1068,7 +1066,7 @@ h2:hover .anchor, h3:hover .anchor, .anchor:focus { opacity: 1; }
 </section>
 
 <footer>
-  <p>Latent Fovea is built by <a href="https://knowdrive.ai">KnowDrive.ai</a>, Recourse Software Inc., and released under the Apache License 2.0 (<a href="https://github.com/Recourse-Software-Inc/latent-fovea">source</a>). GLM-5.2 streaming follows the technique and container format of colibri by Vincenzo Fornaro (Apache-2.0). Layouts use UMAP (umap-learn, BSD-3-Clause); GPT-2 features use Joseph Bloom's sparse autoencoders (MIT) and Neuronpedia's descriptions; the KnowDrive store's vectors come from Jina-CLIP-v2 (Jina AI).</p>
+  <p>Latent Fovea is built by <a href="https://knowdrive.ai">KnowDrive.ai</a>, Recourse Software Inc., and released under the Apache License 2.0 (<a href="https://github.com/Recourse-Software-Inc/latent-fovea">source</a>). GLM-5.2 streaming follows the technique and container format of colibri by Vincenzo Fornaro (Apache-2.0). Layouts use UMAP (umap-learn, BSD-3-Clause); GPT-2 features use Joseph Bloom's sparse autoencoders (MIT) and Neuronpedia's descriptions; KnowDrive stores embedded with Jina-CLIP-v2 (Jina AI) can be built into data sets. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License 1.1), served from this site.</p>
   <p>Built-in models: GPT-2 small (OpenAI, MIT), DistilGPT2 (Hugging Face, Apache-2.0), MDLM trained on OpenWebText (Kuleshov Group, Cornell, Apache-2.0). Models loaded from Hugging Face come under their own licences, shown before you download. Weights are the public releases, kept at 16-bit precision; models published in bfloat16 are rounded to that format when they load.</p>
 </footer>
 

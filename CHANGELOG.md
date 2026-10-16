@@ -8,11 +8,17 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - CI (parse checks, licence headers, dev-server smoke test), Dependabot, issue and pull-request templates.
 - `requirements.txt`, `requirements-dev.txt` and `package.json`.
 - Prebuilt data on the `data` branch, each model folder with its licence and a statement of changes.
+- `CITATION.cff`, for citing Latent Fovea.
 
 ### Changed
 - The site sends a Content-Security-Policy and other security headers, and `tools/serve.py` sends the same ones. The page scripts of `glm.html` and `real.html` moved into files.
 - `tools/build_data.py` updates `models.json` after every build. `tools/glm_ref.py` no longer needs a prompt file.
 - Workflows pin their actions to commits, pass inputs through the environment, and work without a `data` branch.
+- Fonts are served from the site (`web/fonts/`, OFL-1.1) instead of Google Fonts, so pages make no requests to Google; the Content-Security-Policy no longer allows Google's font hosts.
+- Code of conduct reports go to conduct@recoursellm.com.
+
+### Removed
+- The Canada 2025/26 Public Data store is no longer listed or published. The tools that build a store data set remain.
 
 ### Fixed
 - `?data=` accepts only a relative path on the same site, and data-set category names are escaped. A crafted link could otherwise run script in the page.

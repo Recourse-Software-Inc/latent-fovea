@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use Latent Fovea in your work, please cite it as below."
+type: software
+title: "Latent Fovea"
+abstract: >-
+  An open-source browser tool for exploring the real latent space of
+  open-weights language models, foveated like a VR headset: the vectors under
+  your gaze are streamed in, re-projected and searched in WebAssembly, and the
+  rest is drawn from a small precomputed atlas. It includes GPT-2's forward
+  pass slowed down, masked diffusion (MDLM), models loaded from Hugging Face,
+  and GLM-5.2 (744B mixture of experts) run on WebGPU with its experts
+  streamed from an SSD.
+authors:
+  - name: "Recourse Software Inc."
+    website: "https://knowdrive.ai"
+    email: "joel@recoursellm.com"
+repository-code: "https://github.com/Recourse-Software-Inc/latent-fovea"
+url: "https://latent.knowdrive.ai"
+license: Apache-2.0
+version: 0.1.0
+date-released: 2026-10-15
+keywords:
+  - interpretability
+  - latent space
+  - visualization
+  - webgpu
+  - webassembly
+  - mixture of experts
+  - large language models
