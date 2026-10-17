@@ -6,7 +6,7 @@ Built by [KnowDrive.ai](https://knowdrive.ai) (Recourse Software Inc.). Open sou
 
 **Requirements:** a desktop browser with WebGL2 and WebAssembly SIMD (current Chrome, Edge, Firefox or Safari). WebGPU (Chrome or Edge 113+, Safari 26) runs Hugging Face models faster; GLM-5.2 needs WebGPU plus a folder picker (Chrome or Edge) and its ~419 GB container on a local SSD. Building data needs Python 3.11+; the checks need Node 22+.
 
-**Status:** an experimental research tool, 0.1.0. Not built for phones. Known limits: SentencePiece tokenizers (Llama 2, TinyLlama) aren't supported, GLM-5.2's context stops at 2,048 tokens, and UMAP layouts for Hugging Face models are computed in the browser unless prebuilt.
+**Status:** an experimental research tool, 0.1.1. Not built for phones. Known limits: SentencePiece tokenizers (Llama 2, TinyLlama) aren't supported, GLM-5.2's context stops at 2,048 tokens, and UMAP layouts for Hugging Face models are computed in the browser unless prebuilt.
 
 **Contents:** [Models](#models) · [What you see](#what-you-see) · [Any model from Hugging Face](#any-model-from-hugging-face) · [Forward pass](#forward-pass-watching-gpt-2-think-slowed-down) · [Diffusion](#diffusion-watching-mdlm-fill-in-the-answer) · [GPU](#running-on-the-gpu) · [Streaming](#how-the-streaming-works) · [Run it](#run-it) · [Build the data](#build-the-data-yourself) · [Files](#files) · [Credits](#credits)
 

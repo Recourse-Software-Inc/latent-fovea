@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-16
+
 ### Added
 - CI (parse checks, licence headers, dev-server smoke test), Dependabot, issue and pull-request templates.
 - `requirements.txt`, `requirements-dev.txt` and `package.json`.
@@ -36,5 +38,6 @@ First public release.
 - A KnowDrive store as a data set: retrieval shown as attention.
 - GLM-5.2 (744B MoE) in the browser on WebGPU, with experts streamed from an SSD. Includes an optional RAM tier, router read-ahead, the expert cloud and drafted previews.
 
-[Unreleased]: https://github.com/Recourse-Software-Inc/latent-fovea/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Recourse-Software-Inc/latent-fovea/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Recourse-Software-Inc/latent-fovea/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Recourse-Software-Inc/latent-fovea/releases/tag/v0.1.0

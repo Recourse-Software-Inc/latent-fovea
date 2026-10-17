@@ -1,6 +1,6 @@
 {
   "name": "latent-fovea",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Fly through the real latent space of an open-weights model in the browser.",
   "license": "Apache-2.0",
