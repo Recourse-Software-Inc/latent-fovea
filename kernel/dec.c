@@ -139,6 +139,9 @@ static float *KC, *VC;       // [L][MAXT][KD]
 static float *ATT;           // [L][NH][MAXT], probabilities for the latest query
 static float *HEADN;         // [L][NH]
 static float *MLPA;          // [L][F]
+static float *PRE, *PREU;    // [L][F] W1's output (GELU's input, or SwiGLU's gate; any input steer included) and W3's (SwiGLU's value)
+static float *LN2R;          // [L] 1/scale of each MLP's norm, last token
+static float *NL;            // neuron_links / neuron_readers output (see there)
 static float *RES;           // [(L + 1)][C]
 static float LENS_P[TOPK], LENS_H;
 static u32 LENS_I[TOPK];
@@ -154,12 +157,16 @@ static float *QVEC;              // [C] a residual-stream vector to read out on 
 // the forward pass, so every later layer (and the context kept for later tokens) sees the changed
 // model. 0 knocks a part out; 1 leaves it alone. Recordings show the changed values.
 #define NKO_MAX 256
-static float *HSCALE, *MSCALE, NKO_S[NKO_MAX];  // [L][NH], [L]
+static float *HSCALE, *MSCALE, NKO_S[NKO_MAX], NKO_A[NKO_MAX], NKO_P[NKO_MAX];  // [L][NH], [L]
 static u32 NKO_L[NKO_MAX], NKO_I[NKO_MAX], nko;
 EXPORT void iv_clear(void) { for (u32 j = 0; j < L * NH; j++) HSCALE[j] = 1; for (u32 l = 0; l < L; l++) MSCALE[l] = 1; nko = 0; }
 EXPORT void iv_head(u32 l, u32 h, float s) { if (l < L && h < NH) HSCALE[l * NH + h] = s; }
 EXPORT void iv_mlp(u32 l, float s) { if (l < L) MSCALE[l] = s; }
-EXPORT u32 iv_neuron(u32 l, u32 i, float s) { if (nko >= NKO_MAX || i >= F) return 1; NKO_L[nko] = l; NKO_I[nko] = i; NKO_S[nko] = s; nko++; return 0; }
+EXPORT u32 iv_neuron(u32 l, u32 i, float s) { if (nko >= NKO_MAX || i >= F) return 1; NKO_L[nko] = l; NKO_I[nko] = i; NKO_S[nko] = s; NKO_A[nko] = 0; NKO_P[nko] = 0; nko++; return 0; }
+// Steering: activation -> activation * s + add, at every position (add turns a silent neuron on).
+EXPORT u32 iv_neuron2(u32 l, u32 i, float s, float add) { if (iv_neuron(l, i, s)) return 1; NKO_A[nko - 1] = add; return 0; }
+// Steering the input instead: W1's output (GELU's input, or SwiGLU's gate) + pre, before the activation.
+EXPORT u32 iv_neuron3(u32 l, u32 i, float s, float add, float pre) { if (iv_neuron2(l, i, s, add)) return 1; NKO_P[nko - 1] = pre; return 0; }
 static u32 umean_ready;
 static float NV_P[2 * TOPK];     // a neuron's most promoted, then most suppressed, words
 static u32 NV_I[2 * TOPK];
@@ -204,6 +211,9 @@ EXPORT u32 init(void) {
   KC = alloc((u64)L * MAXT * KD * 4); VC = alloc((u64)L * MAXT * KD * 4);
   ATT = alloc((u64)L * NH * MAXT * 4); HEADN = alloc(L * NH * 4);
   MLPA = alloc((u64)L * F * 4); RES = alloc((u64)(L + 1) * C * 4);
+  PRE = alloc((u64)L * F * 4); PREU = alloc((u64)L * F * 4); LN2R = alloc(L * 4);
+  NL = alloc(((u64)2 * (L * F + L * NH + 1) + 4) * 4);
+  if (!PRE || !PREU || !LN2R || !NL) return 1;
   x = alloc(C * 4); xn = alloc(C * 4); x2 = alloc(C * 4); tmp = alloc(C * 4); contrib = alloc(C * 4);
   q = alloc(QD * 4); k = alloc(KD * 4); v = alloc(KD * 4); y = alloc(QD * 4);
   hb = alloc(F * 4); hb2 = alloc(F * 4); LOGITS = alloc((u64)V * 4);
@@ -222,6 +232,10 @@ EXPORT u16 *ptr_stage(void) { return stage; }
 EXPORT float *ptr_att(void) { return ATT; }
 EXPORT float *ptr_headn(void) { return HEADN; }
 EXPORT float *ptr_mlp(void) { return MLPA; }
+EXPORT float *ptr_pre(void) { return PRE; }
+EXPORT float *ptr_preu(void) { return PREU; }
+EXPORT float *ptr_ln2r(void) { return LN2R; }
+EXPORT float *ptr_nl(void) { return NL; }
 EXPORT float *ptr_res(void) { return RES; }
 EXPORT float *ptr_mout(void) { return MOUT; }
 // The size of what token pos offers to query head h at layer l: the norm of its value vector.
@@ -265,13 +279,13 @@ EXPORT u32 load(u32 which, u32 offset, u32 n) {
 }
 
 // ---------- blocks ----------
-static void norm(const float *in, const u16 *w, const u16 *b, float *out, u32 n) {
+static float norm(const float *in, const u16 *w, const u16 *b, float *out, u32 n) {  // returns 1/scale
   if (CFG[NORM_] == 1) {  // RMSNorm
     float ss = 0;
     for (u32 i = 0; i < n; i++) ss += in[i] * in[i];
     float r = 1.0f / fsqrt(ss / n + EPS);
     for (u32 i = 0; i < n; i++) out[i] = in[i] * r * h2f(w[i]);
-    return;
+    return r;
   }
   float m = 0, var = 0;
   for (u32 i = 0; i < n; i++) m += in[i];
@@ -279,6 +293,7 @@ static void norm(const float *in, const u16 *w, const u16 *b, float *out, u32 n)
   for (u32 i = 0; i < n; i++) { float d = in[i] - m; var += d * d; }
   float r = 1.0f / fsqrt(var / n + EPS);
   for (u32 i = 0; i < n; i++) out[i] = (in[i] - m) * r * h2f(w[i]) + (b ? h2f(b[i]) : 0.0f);
+  return r;
 }
 static void rmsnorm_head(float *h, const u16 *w) {  // qwen3's per-head q/k norm (always RMS)
   float ss = 0;
@@ -354,12 +369,15 @@ static void mlp(u32 l, const float *xin, float *acc) {
   u16 **w = LW[l];
   float *act = MLPA + (u64)l * F;
   matvec(w[S_W1], w[S_B1], xin, hb, F, C);
+  float *pre = PRE + (u64)l * F, *preu = PREU + (u64)l * F;
+  for (u32 j = 0; j < nko; j++) if (NKO_L[j] == l) hb[NKO_I[j]] += NKO_P[j];
+  for (u32 i = 0; i < F; i++) pre[i] = hb[i];
   if (CFG[MLP_] == 2) {
     matvec(w[S_W3], 0, xin, hb2, F, C);
-    for (u32 i = 0; i < F; i++) hb[i] = silu(hb[i]) * hb2[i];
+    for (u32 i = 0; i < F; i++) { preu[i] = hb2[i]; hb[i] = silu(hb[i]) * hb2[i]; }
   } else if (CFG[MLP_] == 1) for (u32 i = 0; i < F; i++) hb[i] = gelu_erf(hb[i]);
   else for (u32 i = 0; i < F; i++) hb[i] = gelu_tanh(hb[i]);
-  for (u32 j = 0; j < nko; j++) if (NKO_L[j] == l) hb[NKO_I[j]] *= NKO_S[j];
+  for (u32 j = 0; j < nko; j++) if (NKO_L[j] == l) hb[NKO_I[j]] = hb[NKO_I[j]] * NKO_S[j] + NKO_A[j];
   for (u32 i = 0; i < F; i++) act[i] = hb[i];
   matvec(w[S_W2], w[S_B2], hb, tmp, C, F);
   if (MSCALE[l] != 1.0f) for (u32 o = 0; o < C; o++) tmp[o] *= MSCALE[l];
@@ -383,7 +401,7 @@ EXPORT void step_layer(u32 l) {
     u16 **w = LW[l];
     if (CFG[PARALLEL_]) {  // x + attn(ln1(x)) + mlp(ln2(x))
       norm(x, w[S_LN1W], w[S_LN1B], xn, C);
-      norm(x, w[S_LN2W], w[S_LN2B], x2, C);
+      LN2R[l] = norm(x, w[S_LN2W], w[S_LN2B], x2, C);
       for (u32 i = 0; i < C; i++) contrib[i] = x[i];
       attention(l, xn, pos, contrib);
       mlp(l, x2, contrib);
@@ -391,7 +409,7 @@ EXPORT void step_layer(u32 l) {
     } else {
       norm(x, w[S_LN1W], w[S_LN1B], xn, C);
       attention(l, xn, pos, x);
-      norm(x, w[S_LN2W], w[S_LN2B], xn, C);
+      LN2R[l] = norm(x, w[S_LN2W], w[S_LN2B], xn, C);
       mlp(l, xn, x);
     }
     for (u32 i = 0; i < C; i++) RES[(u64)(l + 1) * C + i] = x[i];
@@ -548,3 +566,92 @@ static u32 rank_dirv(void) {  // top and bottom TOPK words along DIRV
 }
 EXPORT float *ptr_nv_p(void) { return NV_P; }
 EXPORT u32 *ptr_nv_i(void) { return NV_I; }
+
+// ---------- neuron to neuron ----------
+// A neuron's input is its normed residual stream dotted with its input weights, plus a bias. The
+// residual stream is a sum of parts (the embedding, every earlier head and neuron, biases), and the
+// norm at a fixed scale is linear in each part (once centred, for LayerNorm), so the input splits
+// exactly into one term per part:  input_j = sum over parts of r * (c - mean c) . (gamma * w_j) + rest.
+// A SwiGLU neuron has two inputs, its gate (W1) and its value (W3); each splits the same way.
+//
+// NL layout, B = L*F + L*NH + 1: block 0 [0, B) for W1's input, block 1 [B, 2B) for W3's (SwiGLU);
+// within a block L x F neurons, L x NH heads, the embedding. Then the tail at 2B: W1's whole input,
+// W3's whole input, r. Each input minus its block's sum is the biases.
+static float *GW;  // scratch [C] (aliases DIRV: free while this runs)
+static float set_gw(u32 l, u32 j, u32 slot) {  // gamma2 * row j of W1 or W3; returns sum
+  const u16 *w = LW[l][slot] + (u64)j * C, *g = LW[l][S_LN2W];
+  float s = 0;
+  for (u32 c = 0; c < C; c++) { GW[c] = h2f(g[c]) * h2f(w[c]); s += GW[c]; }
+  return s;
+}
+static float dotgw(const float *c, float sg) {
+  float s = 0, m = 0;
+  for (u32 i = 0; i < C; i++) { s += GW[i] * c[i]; m += c[i]; }
+  return CFG[NORM_] == 1 ? s : s - sg * m / C;
+}
+static void links_block(u32 l, u32 j, u32 slot, u32 dyn, float *out) {
+  float sg = set_gw(l, j, slot), r = dyn ? LN2R[l] : 1.0f;
+  for (u32 k = 0; k < L; k++) {
+    float *o = out + (u64)k * F;
+    for (u32 i = 0; i < F; i++) o[i] = 0;
+    if (k >= l) continue;
+    const u16 *w2 = LW[k][S_W2];  // [C][F]: neuron i's output is column i
+    for (u32 i = 0; i < F; i++) hb2[i] = 0;  // column sums, for LayerNorm's mean
+    for (u32 c = 0; c < C; c++) {
+      const u16 *row = w2 + (u64)c * F;
+      float g = GW[c];
+      for (u32 i = 0; i < F; i++) { float w = h2f(row[i]); o[i] += g * w; hb2[i] += w; }
+    }
+    const float *a = MLPA + (u64)k * F;
+    for (u32 i = 0; i < F; i++) {
+      float v = CFG[NORM_] == 1 ? o[i] : o[i] - sg * hb2[i] / C;
+      o[i] = dyn ? v * a[i] * r * MSCALE[k] : v;  // a knocked-out MLP (MSCALE 0) writes nothing
+    }
+  }
+  float *hd = out + (u64)L * F;
+  u32 lastHead = CFG[PARALLEL_] ? l : l + 1;  // parallel blocks: layer l's MLP doesn't see layer l's heads
+  for (u32 hl = 0; hl < L; hl++) for (u32 h = 0; h < NH; h++)
+    hd[hl * NH + h] = dyn && hl < lastHead ? r * dotgw(HOUT + ((u64)hl * NH + h) * C, sg) : 0;
+  hd[L * NH] = dyn ? r * dotgw(RES, sg) : 0;
+}
+// Into neuron j of layer l. dyn = 1: each part's exact share of its input at the most recent
+// position (earlier neurons as activation x weight). dyn = 0: weights only, per unit of each
+// earlier neuron's activation, before r (heads and the embedding are then 0).
+// Returns 2 when the weights are streamed (only one layer is in memory).
+EXPORT u32 neuron_links(u32 l, u32 j, u32 dyn) {
+  if (l >= L || j >= F) return 1;
+  if (CFG[STREAM_]) return 2;
+  u64 B = (u64)L * F + L * NH + 1;
+  GW = DIRV;
+  links_block(l, j, S_W1, dyn, NL);
+  if (CFG[MLP_] == 2) links_block(l, j, S_W3, dyn, NL + B);
+  else for (u64 i = 0; i < B; i++) NL[B + i] = 0;
+  float *t = NL + 2 * B;
+  float steer = 0;  // an input steer on this neuron is the reader's own change, not a bias: leave it out
+  for (u32 q = 0; q < nko; q++) if (NKO_L[q] == l && NKO_I[q] == j) steer += NKO_P[q];
+  t[0] = dyn ? PRE[(u64)l * F + j] - steer : 0; t[1] = dyn && CFG[MLP_] == 2 ? PREU[(u64)l * F + j] : 0; t[2] = dyn ? LN2R[l] : 1; t[3] = 0;
+  return 0;
+}
+// Out of neuron i of layer l: how strongly each later neuron reads its output, per unit of its
+// activation, from the weights alone (before each reader's r). Block 0 of NL: into each W1 input;
+// block 1 (SwiGLU): into each W3 input. Returns 2 when the weights are streamed.
+EXPORT u32 neuron_readers(u32 l, u32 i) {
+  if (l >= L || i >= F) return 1;
+  if (CFG[STREAM_]) return 2;
+  u64 B = (u64)L * F + L * NH + 1;
+  const u16 *w2 = LW[l][S_W2];
+  float m = 0;
+  for (u32 c = 0; c < C; c++) { DIRV[c] = h2f(w2[(u64)c * F + i]); m += DIRV[c]; }
+  m = CFG[NORM_] == 1 ? 0 : m / C;
+  for (u32 blk = 0; blk < 2; blk++) {
+    float *out = NL + blk * B;
+    for (u64 q = 0; q < B; q++) out[q] = 0;
+    if (blk == 1 && CFG[MLP_] != 2) continue;
+    for (u32 k = l + 1; k < L; k++) {
+      const u16 *g = LW[k][S_LN2W], *w = LW[k][blk ? S_W3 : S_W1];
+      for (u32 c = 0; c < C; c++) x2[c] = (DIRV[c] - m) * h2f(g[c]);
+      for (u32 jj = 0; jj < F; jj++) out[(u64)k * F + jj] = dot16(w + (u64)jj * C, x2, C);
+    }
+  }
+  return 0;
+}

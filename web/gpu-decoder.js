@@ -206,6 +206,8 @@ fn main(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_index) l
 @group(0) @binding(3) var<storage, read> H3: array<f32>;
 @group(0) @binding(4) var<storage, read> KO: array<vec4<u32>>;
 @group(0) @binding(5) var<storage, read_write> MLPA: array<f32>;
+@group(0) @binding(6) var<storage, read_write> PRE: array<f32>;
+@group(0) @binding(7) var<storage, read_write> PREU: array<f32>;
 fn erf(x0: f32) -> f32 {
   let s = sign(x0); let x = abs(x0); let t = 1.0 / (1.0 + 0.3275911 * x);
   return s * (1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-x * x));
@@ -214,13 +216,16 @@ fn erf(x0: f32) -> f32 {
 fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   let f = pu(0); let i = g.x;
   if (i >= f) { return; }
-  let x = H1[i]; var v: f32;
+  let n = KO[0].x;
+  var x = H1[i]; var v: f32;
+  for (var j = 0u; j < n; j++) { let e = KO[1u + 2u * j]; if (e.x == pu(2) && e.y == i) { x += bitcast<f32>(KO[2u + 2u * j].x); } }
   let kind = pu(1);
+  PRE[pu(4) + i] = x;
+  if (kind == 2u) { PREU[pu(4) + i] = H3[i]; }
   if (kind == 2u) { v = x / (1.0 + exp(-x)) * H3[i]; }
   else if (kind == 1u) { v = 0.5 * x * (1.0 + erf(x * 0.70710678)); }
   else { let u = 0.7978845608 * (x + 0.044715 * x * x * x); v = 0.5 * x * (1.0 + (1.0 - 2.0 / (exp(2.0 * u) + 1.0))); }
-  let n = KO[0].x;
-  for (var j = 1u; j <= n; j++) { let e = KO[j]; if (e.x == pu(2) && e.y == i) { v *= bitcast<f32>(e.z); } }
+  for (var j = 0u; j < n; j++) { let e = KO[1u + 2u * j]; if (e.x == pu(2) && e.y == i) { v = v * bitcast<f32>(e.z) + bitcast<f32>(e.w); } }
   H1[i] = v; MLPA[pu(4) + i] = v;
 }`,
   // The MLP's output, scaled by any intervention, added into the running state and recorded.
@@ -700,6 +705,7 @@ export class GpuDecoder {
     const { V, C, L, NH, NKV, HD, F } = cfg, QD = NH * HD, KD = NKV * HD;
     if (L > 64 || NH % NKV || C % 8 || HD % 8 || F % 8 || (cfg.ROT || 0) > HD) throw new Error('This model is built in a way this tool can\'t run yet.');
     Object.assign(this, { m: manifest, cfg, L, H: NH, C, F, V, NKV, HD, QD, KD, maxT: MAXT });
+    this.swiglu = cfg.MLP === 2; this.act = ['gelu_tanh', 'gelu_erf', 'swiglu'][cfg.MLP] || 'gelu_tanh';
     dev.pushErrorScope('out-of-memory');
     const B = (n) => this.buf(n * 4);
     this.S = dev.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -709,8 +715,8 @@ export class GpuDecoder {
       x: B(C), xn: B(C), x2: B(C), contrib: B(C), q: B(QD), y: B(QD), tmp: B(C), h1: B(F), h3: B(F),
       KC: B(L * MAXT * KD), VC: B(L * MAXT * KD), ATT: B(L * NH * MAXT), HEADN: B(L * NH), MLPA: B(L * F),
       RES: B((L + 1) * C), HOUT: B(L * NH * C), MOUT: B(L * C), VN: B(L * NH), HS: B(L * NH), MS: B(L),
-      KO: this.buf(16 * 257), LOGITS: B(V), XNL: B(C), QVEC: B(C), UM: B(C), UD: B(C), UG: B(C),
-      GAIN: B(2 * F), COL: B(C),
+      KO: this.buf(16 * (1 + 2 * 256)), LOGITS: B(V), XNL: B(C), QVEC: B(C), UM: B(C), UD: B(C), UG: B(C),
+      GAIN: B(2 * F), COL: B(C), PRE: B(L * F), PREU: cfg.MLP === 2 ? B(L * F) : none,
       DL: this.buf(4 * (L + 1)), XK: B((L + 1) * C), LG: B((L + 1) * V), ST: B(4 * (L + 1)), CAND: B((L + 1) * 256 * 20),
       RW: this.buf(8 * TMAX), UDK: B(TMAX * C), UGK: B(TMAX * C), PARTSK: B(TMAX * 2 * (L * NH + L + 1)),
     };
@@ -797,7 +803,7 @@ export class GpuDecoder {
       const mlp = (xin) => [
         mv(s.W1, s.B1, xin, 0, w.h1, 0, 0, F, C),
         ...(cfg.MLP === 2 ? [mv(s.W3, null, xin, 0, w.h3, 0, 0, F, C)] : []),
-        this.job('act', [F, cfg.MLP, l, 0, l * F], [w.h1, cfg.MLP === 2 ? w.h3 : none, w.KO, w.MLPA], Math.ceil(F / 64)),
+        this.job('act', [F, cfg.MLP, l, 0, l * F], [w.h1, cfg.MLP === 2 ? w.h3 : none, w.KO, w.MLPA, w.PRE, w.PREU], Math.ceil(F / 64)),
         mv(s.W2, s.B2, w.h1, 0, w.tmp, 0, 0, C, F),
         this.job('mout', [C, l, l * C], [w.tmp, w.MS, acc, w.MOUT], Math.ceil(C / 64)),
       ];
@@ -830,7 +836,7 @@ export class GpuDecoder {
     for (const j of this.seq) this.run(pass, j);
     pass.end();
     // One readback of everything the views use.
-    const parts = [[w.ATT, L * H * MAXT], [w.HEADN, L * H], [w.MLPA, L * F], [w.RES, (L + 1) * C], [w.MOUT, L * C], [w.VN, L * H]];
+    const sw = this.swiglu, parts = [[w.ATT, L * H * MAXT], [w.HEADN, L * H], [w.MLPA, L * F], [w.RES, (L + 1) * C], [w.MOUT, L * C], [w.VN, L * H], [w.PRE, L * F], ...(sw ? [[w.PREU, L * F]] : [])];
     const total = parts.reduce((s, [, n]) => s + n, 0) * 4;
     const st = dev.createBuffer({ size: total, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     let at = 0;
@@ -842,12 +848,15 @@ export class GpuDecoder {
     this.check();
     let o = 0;
     const take = (n) => { const v = all.subarray(o, o + n); o += n; return v; };
-    this.rec = { att: take(L * H * MAXT), headN: take(L * H), mlp: take(L * F), res: take((L + 1) * C), mout: take(L * C), vn: take(L * H) };
+    this.rec = { att: take(L * H * MAXT), headN: take(L * H), mlp: take(L * F), res: take((L + 1) * C), mout: take(L * C), vn: take(L * H), pre: take(L * F), preU: sw ? take(L * F) : null };
     this.pos = pos; this.finalLens = null;
   }
   attRow(l, h, q) { return this.rec.att.subarray((l * this.H + h) * MAXT, (l * this.H + h) * MAXT + q + 1); }
   headNorms() { return this.rec.headN; }
   mlp() { return this.rec.mlp; }
+  // Each neuron's input before its activation function (SwiGLU: the gate's), and SwiGLU's value.
+  pre() { return this.rec ? this.rec.pre : null; }
+  preU() { return this.rec ? this.rec.preU : null; }
   residual(depth) { return this.rec.res.subarray(depth * this.C, (depth + 1) * this.C); }
   mlpOut(l) { return this.rec.mout.subarray(l * this.C, (l + 1) * this.C); }
   valueNorms() { return this.rec.vn.slice(); }
@@ -1025,9 +1034,9 @@ export class GpuDecoder {
     const { L, H } = this, hs = new Float32Array(L * H).fill(1), ms = new Float32Array(L).fill(1);
     for (const [l, h, s] of spec.heads || []) if (l < L && h < H) hs[l * H + h] = s;
     for (const [l, s] of spec.mlps || []) if (l < L) ms[l] = s;
-    const ko = new Uint32Array(4 * 257), kf = new Float32Array(ko.buffer), list = (spec.neurons || []).slice(0, 256);
-    ko[0] = list.length;
-    list.forEach(([l, i, s], j) => { ko[4 * (j + 1)] = l; ko[4 * (j + 1) + 1] = i; kf[4 * (j + 1) + 2] = s; });
+    const ko = new Uint32Array(4 * (1 + 2 * 256)), kf = new Float32Array(ko.buffer), list = (spec.neurons || []).slice(0, 256);
+    ko[0] = list.length;  // per neuron two vec4s: (l, i, scale, add), then (input steer, -, -, -)
+    list.forEach(([l, i, s, add = 0, pre = 0], j) => { const o = 4 * (1 + 2 * j); ko[o] = l; ko[o + 1] = i; kf[o + 2] = s; kf[o + 3] = add; kf[o + 4] = pre; });
     this.put(this.w.HS, hs); this.put(this.w.MS, ms); this.put(this.w.KO, ko);
     return true;
   }

@@ -184,6 +184,7 @@ button:hover, select:hover, input:hover { border-color: var(--lift); }
 .chip.gen { color: #c9c1ff; border-color: rgba(108, 92, 231, .5); }
 .chip.on { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan) inset; }
 .chip.wait { opacity: .45; animation: pulse 1s ease-in-out infinite; }
+.chip.doc { color: var(--muted); border-style: dashed; font-style: italic; }
 .chip.masked { color: var(--muted); border-style: dashed; font-style: italic; }
 .chip.fresh { border-color: #fff; box-shadow: 0 0 0 1px #fff inset, 0 0 12px rgba(53, 224, 230, .5); color: #fff; font-style: normal; }
 @keyframes pulse { 50% { opacity: .9; } }
@@ -442,3 +443,67 @@ body.kd .token, body.ex .token { font: 600 17px/1.3 var(--display); word-break: 
 .kdq-facets b { font-weight: 500; color: var(--text); text-align: right; }
 body.kd .legend span { cursor: pointer; user-select: none; }
 body.kd .legend span.off { opacity: .35; text-decoration: line-through; }
+
+/* Reading one neuron: examples on both sides, its shape, what feeds and reads it, a test box */
+.nrn ol.exs li { display: grid; grid-template-columns: 44px 1fr; gap: 8px; align-items: baseline; padding: 2px 4px; border-bottom: 1px solid rgba(255, 255, 255, .04); }
+.nrn ol.exs .text.ex { font-size: 11px; line-height: 1.7; }
+.nrn .shape { display: flex; align-items: flex-end; gap: 3px; height: 46px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; }
+.nrn .shape i { flex: 1; min-width: 6px; background: linear-gradient(#35e0e6, rgba(53, 224, 230, .35)); border-radius: 2px 2px 0 0; }
+.nrn ol.parts li { display: grid; grid-template-columns: 96px 1fr 58px; gap: 8px; align-items: center; padding: 2px 6px; font: 500 11.5px var(--mono); font-variant-numeric: tabular-nums; }
+.nrn .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.nrn button.link { padding: 0; border: 0; background: none; color: var(--cyan); font: inherit; cursor: pointer; text-decoration: underline dotted; }
+.nrn button.mini { padding: 1px 7px; font: 500 10px var(--mono); letter-spacing: .04em; text-transform: none; }
+.nrn button[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); }
+.nrn .probe { display: flex; gap: 6px; }
+.nrn .probe input { flex: 1; min-width: 0; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .04); color: var(--text); font: 500 12px var(--mono); }
+
+/* The neuron graph, drawn over the page */
+#ngraph { position: fixed; inset: 5vh 3vw auto 3vw; max-height: 90vh; overflow: auto; z-index: 40; padding: 12px 16px 14px; border-radius: 14px; border: 1px solid var(--line-strong); background: rgba(8, 8, 14, .98); color: var(--text); font-size: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
+#ngraph header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+#ngraph header b { font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--cyan); }
+#ngraph .x { margin-left: auto; padding: 2px 8px; }
+#ngraph .note { margin: 0 0 6px; color: var(--muted); }
+#ngraph .note .c { color: var(--cyan); } #ngraph .note .v { color: #a996ff; }
+#ngraph .gwrap { overflow-x: auto; }
+#ngraph svg { display: block; }
+#ngraph .lab { fill: var(--muted); font: 500 10.5px var(--mono); }
+#ngraph .lab.small { font-size: 9.5px; }
+#ngraph path { fill: none; }
+#ngraph path.ep { stroke: #35e0e6; } #ngraph path.en { stroke: #a996ff; }
+#ngraph circle.np { fill: rgba(53, 224, 230, .55); stroke: #35e0e6; } #ngraph circle.nn { fill: rgba(169, 150, 255, .5); stroke: #a996ff; }
+#ngraph rect.hp { fill: #35e0e6; } #ngraph rect.hn { fill: #a996ff; }
+#ngraph .node { cursor: pointer; }
+#ngraph .node.sel circle { stroke: #fff; stroke-width: 2.5; }
+#ngraph .node.ko circle { stroke: var(--amber); stroke-dasharray: 3 2; }
+@media (max-width: 700px) { #ngraph { inset: 2vh 8px auto 8px; } }
+/* The reader's map: trail, names and notes, blind reading, passages */
+.nrn .trail { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin: 2px 0 4px; font: 500 10.5px var(--mono); }
+.nrn .trail .crumb { padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; }
+.nrn .trail .crumb[aria-current="true"] { color: var(--cyan); border-color: var(--line-strong); }
+.nrn .trail .sep { color: var(--faint, #555); }
+.nrn .notes-io { margin-left: auto; display: inline-flex; gap: 4px; text-transform: none; letter-spacing: 0; }
+.nrn .trail .notes-io { margin-left: 0; }
+.nrn .nlabel, .nrn .nnote { width: 100%; box-sizing: border-box; margin: 2px 0 4px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .04); color: var(--text); font: 500 12px var(--mono); }
+.nrn .nnote { font-family: inherit; resize: vertical; min-height: 34px; }
+.nrn .blind { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
+.nrn .trail .blind { margin: 0 0 0 6px; font: inherit; gap: 3px; }
+.nrn li button.named span:first-child { color: var(--cyan); text-decoration: underline dotted; }
+.nrn .num small { display: block; font-size: 9.5px; opacity: .7; }
+.nrn ol.exs li { grid-template-columns: 50px 1fr 22px; }
+.nrn ol.exs li.passage { display: block; padding: 4px 6px 8px 58px; border-bottom: 1px solid var(--line); }
+.nrn .text .doc { padding: 0 3px; border: 1px dashed var(--line-strong); border-radius: 3px; color: var(--muted); font-size: 10px; }
+.nrn .more { padding: 0 5px; align-self: center; }
+.nrn .note.sub { margin: 6px 0 2px; font: 500 10.5px var(--mono); letter-spacing: .06em; color: var(--muted); }
+#ngraph.min { inset: auto auto 14px 14px; max-width: min(560px, 60vw); padding: 6px 10px; border-radius: 10px; }
+#ngraph.min header { margin: 0; }
+#ngraph header button { margin-left: 6px; padding: 2px 8px; }
+#ngraph header .x { margin-left: auto; }
+#ngraph .node.named circle { stroke: #ffd36b; stroke-width: 2; }
+#ngraph .node:focus { outline: none; } #ngraph .node:focus circle { stroke: #fff; stroke-width: 3; }
+/* Go to a neuron, the reader's own index, and the bands of a neuron's range */
+.nrn .trail .goto { width: 92px; margin-left: auto; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .04); color: var(--text); font: inherit; }
+.nrn ol.mine { margin: 2px 0 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; max-height: 180px; overflow-y: auto; }
+.nrn ol.mine li { display: block; padding: 2px 0; font-size: 11.5px; }
+.nrn ol.mine .nn { display: block; margin-left: 12px; color: var(--muted); font-size: 11px; }
+.nrn .shape .bandbar { flex: 1; min-width: 6px; padding: 0; border: 0; border-radius: 2px 2px 0 0; background: linear-gradient(#ffd36b, rgba(255, 211, 107, .35)); cursor: pointer; }
+.nrn .shape .bandbar.on { outline: 1px solid #fff; }

@@ -6,14 +6,19 @@
 import { GPT2Tokenizer, HFTokenizer } from './bpe.js';
 import { dataFetch } from './store.js';
 import { SAES } from './sae.js';
+import { NeuronBook } from './neuronbook.js';
+import { NeuronGraph } from './ngraph-view.js';
 
 const BEATS = { live: 0, slow: 160, slower: 520, glacial: 1500 };
+
+// the page-address keys a shared link uses (app.js drops them when the model changes)
+export const SHARED_KEYS = ['ask', 'gen', 'dec', 'p', 'n', 'g', 'gk', 'w', 'iv', 'h', 'm'];
 
 export class ForwardView {
   constructor(ctx) {
     Object.assign(this, ctx);  // $, DATA, tokens, points, cats, dpr, project, disp, flyToPoint, catColors
     this.active = false; this.ready = false; this.loading = false;
-    this.hist = []; this.rows = []; this.promptLen = 0;
+    this.hist = []; this.rows = []; this.promptLen = 0; this.lead = 0;  // lead: 1 when the run starts with <|endoftext|>
     this.playing = false; this.pending = false; this.beat = 99; this.lastBeat = 0; this.viewPos = -1;
     this.toGenerate = 0; this.gaze = null; this.focusHead = null; this.stepOnce = false;
     this.canFly = true; this.flying = false;  // fly-through: the camera follows the thought path
@@ -28,7 +33,21 @@ export class ForwardView {
     // The reference run ("A"), to compare the current run with: pinned by hand, or the unchanged
     // run a Rerun with interventions keeps. { kind: 'pin' | 'iv', label, rows, promptLen, gen,
     // hist, p0: per position, the probability it gave the word it wrote next }.
-    this.ko = { heads: new Set(), mlps: new Set(), neurons: new Set() }; this.ivRun = null; this.ref = null; this.ivVer = 0;
+    // neurons: key 'l:i' -> { s, add, label }: knocked out (s 0), or steered (activation * s + add).
+    this.ko = { heads: new Set(), mlps: new Set(), neurons: new Map() }; this.ivRun = null; this.ref = null; this.ivVer = 0;
+    // Reading one neuron: its book (strongest examples, both poles, its shape; null when the model
+    // has none), what feeds it at a token ('pos:l:j'), what reads it ('l:i'), a reader's own test
+    // sentence, and whether "where it fires" shows the activation or the input before it.
+    this.book = null; this.bookData = new Map(); this.lk = new Map(); this.rd = new Map(); this.probe = null; this.showInput = false; this.caps = {};
+    this.graph = null;  // the neuron graph for one word: { pos, row, at, data | null, progress }
+    this.traces = new Map();  // finished graphs, 'pos:row:ivVer' -> data, so reopening one is instant
+    // The reader's own map: a trail of neurons visited (back and forward), and their names and
+    // notes, kept in this browser per model and exportable.
+    this.trail = []; this.trailIx = -1; this.notes = new Map(); this.urlDone = false;
+    this.shared = new URLSearchParams(location.search);  // a shared address, read once before anything rewrites it
+    this.expand = null;  // an example opened to its whole passage
+    try { this.blind = localStorage.getItem('lf-blind') === '1'; } catch { this.blind = false; }  // reading blind, kept across visits
+    this.band = null; this.bandWin = new Map(); this.showMine = false; this.pendingUrl = null;  // a band of its range opened; the reader's own index
     // Features (SAE): the set for this model, encodings per 'depth:pos', features per 'depth:j',
     // Neuronpedia's descriptions per 'source:j', and the latest download note.
     this.sae = null; this.saeRes = new Map(); this.saeFeat = new Map(); this.np = new Map(); this.npVer = 0; this.saeMsg = '';
@@ -117,9 +136,11 @@ export class ForwardView {
 
   // Start fetching the weights as soon as someone starts typing.
   prefetch() { if (!this.ready && !this.loading) this.load(); }
-  submit(text) {
+  submit(text, { shared = false } = {}) {
     text = (text || '').trim();
     if (!text) return;
+    // the reader's own text: whatever a shared link still had waiting is dropped, never applied to it
+    if (!shared) { this.urlDone = true; this.pendingIv = null; this.pendingUrl = null; this.shared = new URLSearchParams(); }
     if (this.ivRun) { this.worker.postMessage({ type: 'intervene', spec: {} }); this.ivRun = null; }  // a new query starts unchanged
     if (this.ref && this.ref.kind === 'iv') this.setRef(null);  // a pinned run stays, to compare the new text with
     this.queued = text;
@@ -152,7 +173,25 @@ export class ForwardView {
   }
 
   onWorker(m) {
+    // replies about the text on screen: one from an earlier run (or the unchanged model, before a
+    // Rerun) still on its way would show the wrong model's numbers
+    if (m.run != null && m.run !== this.runId && ['links', 'readers', 'sae', 'saeFeat', 'hidden', 'lens', 'attr', 'diff', 'error'].includes(m.type)) { if (m.type === 'hidden') this.hs.busy = false; return; }
     if (m.type === 'gain') { this.gains.set(`${m.l}:${m.row}`, m.gain); this.nrnKey = ''; return; }
+    if (m.type === 'links') { this.lk.set(`${m.pos}:${m.l}:${m.j}`, m); this.nrnKey = ''; return; }
+    if (m.type === 'readers') { this.rd.set(`${m.pos}:${m.l}:${m.i}`, m); this.nrnKey = ''; return; }
+    if (m.type === 'probe') {
+      if (m.kind === 'expand') { if (this.expand && this.expand.id === m.id) { this.expand.result = m; this.nrnKey = ''; } return; }
+      if (this.probe && this.probe.id === m.id) { this.probe.result = m; this.nrnKey = ''; }
+      return;
+    }
+    if (m.type === 'graphProgress') { if (m.runId === this.textId && this.graph && !this.graph.data) { this.graph.progress = `${m.k} of ${m.n} neurons traced`; this.graphView.render(this); } return; }
+    if (m.type === 'graph') {
+      if (m.runId !== this.textId) return;  // a trace of an earlier text
+      if (!m.error) this.traces.set(`${m.pos}:${m.row}:${m.ivVer}`, m);
+      if (this.graph && this.graph.pos === m.pos && this.graph.row === m.row) { this.graph.data = m; this.graphView.render(this); }
+      this.tryPendingIv();  // a shared link: now change the model
+      return;
+    }
     if (m.type === 'nvocab') { this.nvocab.set(`${m.l}:${m.i}`, m); this.nrnKey = ''; return; }
     if (m.type === 'lens') { const h = this.hist[m.pos]; if (h) h.lens[m.depth] = m.lens; this.nrnKey = ''; return; }
     if (m.type === 'diff') { const h = this.hist[m.pos]; if (h) h.diff = m.d; return; }
@@ -173,6 +212,10 @@ export class ForwardView {
       this.setStatus('');
       this.streaming = !!m.streaming;
       this.sae = m.sae || null; this.$('fwdFeatRow').hidden = !this.sae;
+      this.caps = m.caps || {};
+      this.loadNotes();
+      this.book = null; this.bookData.clear();
+      if (!this.repo && !this.DATA.startsWith('opfs:')) NeuronBook.open(new URL(this.DATA, location.href).href, dataFetch).then((b) => { this.book = b; this.nrnKey = ''; });
       this.fidelityNote().then((note) => { if (note && this.ready) this.$('fwdStatus').textContent += m.q8 ? ` · the 16-bit model is ${note}; at 8 bits its predictions move slightly` : ` · ${note}${m.backend === 'gpu' ? '; the GPU matches the CPU kernel to within 0.001' : ''}`; });
       this.backend = m.backend;
       const q8 = m.q8 && m.qerr ? `, 8-bit weights (${(m.qerr.all * 100).toFixed(2)}% from the published ones)` : '';
@@ -182,11 +225,17 @@ export class ForwardView {
       const sel = this.$('fwdBackend');
       this.$('fwdBackendRow').hidden = !m.canGpu;
       sel.value = ['cpu', 'gpu8'].includes(this.backendPref()) ? this.backendPref() : 'auto';
+      if (this.notice) this.$('fwdStatus').textContent += ` · ${this.notice}`;
       this.syncButtons();
       if (this.queued) { const q = this.queued; this.queued = null; this.run(q); }
     } else if (m.type === 'captured') {
+      if (m.run !== this.runId) return;  // a step of an earlier run, still in the worker's queue
       this.pending = false;
+      // inputs before the activation function: every token on small models, else the latest only
+      if (m.pre && this.L * this.F > 65536) for (const h of this.hist) if (h) { h.pre = null; h.preU = null; }
       this.hist[m.pos] = m;
+      if (!this.urlDone && m.pos >= this.promptLen - 1) this.applyUrl();
+      else if (this.pendingUrl) this.flushUrl();
       this.msEma = this.msEma ? this.msEma * 0.7 + m.ms * 0.3 : m.ms;
       if (m.pos < this.promptLen - 1) this.request(m.pos + 1);          // prompt: no replay
       else { this.beat = m.pos === this.promptLen - 1 && this.speed() === 0 ? this.L + 1 : 0; this.lastBeat = performance.now(); }
@@ -197,20 +246,29 @@ export class ForwardView {
   request(pos) {
     this.pending = true;
     const b = this.ref, watch = b && pos + 1 < b.rows.length ? b.rows[pos + 1] : undefined;  // A's next word, matched by index
-    this.worker.postMessage({ type: 'step', id: pos, row: this.rows[pos], pos, lensMode: 2, next: this.rows[pos + 1], watch });
+    this.worker.postMessage({ type: 'step', id: pos, run: this.runId, row: this.rows[pos], pos, lensMode: 2, next: this.rows[pos + 1], watch });
   }
 
   // ---------- control ----------
   speed() { return BEATS[this.$('fwdSpeed').value] ?? 160; }
   run(text, count) {
     if (!this.ready) return;
+    if (!this.tok.encode(text).some((i) => this.rowOf[i] >= 0)) return;  // nothing this model can read: keep the run on screen
     this.promptText = text;
-    const ids = this.tok.encode(text).slice(0, this.maxT - 2);
+    // GPT-2-family runs start after <|endoftext|>, as the model saw each document in training and
+    // as the neuron book and Test do, so a value here is the one the book would give
+    const eot = this.eotRow(); this.lead = eot != null ? 1 : 0;
+    const ids = this.tok.encode(text).slice(0, this.maxT - 2 - this.lead);
     this.rows = ids.map((i) => this.rowOf[i]).filter((r) => r >= 0);
     if (!this.rows.length) return;
+    if (this.lead) this.rows.unshift(eot);
     this.promptLen = this.rows.length; this.hist = []; this.viewPos = -1; this.asked.clear(); this.pick = null;
-    this.saeRes.clear(); this.saeFeat.clear();
-    Object.assign(this.hs, { goal: null, shown: null, n: 0, fresh: true, hover: null }); this.flowCache = null; this.runId = (this.runId || 0) + 1;
+    this.saeRes.clear(); this.saeFeat.clear(); this.lk.clear(); this.rd.clear();
+    Object.assign(this.hs, { goal: null, shown: null, n: 0, fresh: true, hover: null, busy: false, id: (this.hs.id || 0) + 1 }); this.flowCache = null; this.runId = (this.runId || 0) + 1;
+    // a new text makes old traces meaningless; a rerun of the same text keeps the graph, which is
+    // how its knockouts are tested (each trace remembers which model it was made on)
+    if (text !== this.graphText) { this.textId = (this.textId || 0) + 1; this.traces.clear(); if (this.graph) { this.graph = null; this.graphView.el.hidden = true; } this.graphView.putBack(); this.graphView.note = ''; this.graphText = text; }
+    setTimeout(() => this.syncUrl(), 0);
     this.toGenerate = count ?? +this.$('fwdCount').value;
     this.playing = true; this.beat = 0;
     document.body.classList.add('running');
@@ -218,7 +276,8 @@ export class ForwardView {
     this.renderChips(); this.syncButtons();
     this.request(0);
     const c = [0, 0, 0];
-    for (const r of this.rows) for (let k = 0; k < 3; k++) c[k] += this.points[3 * r + k] / this.rows.length;
+    const shown = this.rows.slice(this.lead);
+    for (const r of shown) for (let k = 0; k < 3; k++) c[k] += this.points[3 * r + k] / shown.length;
     this.flyToPoint(c, 2.2);
   }
   sampleNext(h) {
@@ -232,7 +291,7 @@ export class ForwardView {
   advanceToNextToken() {
     const last = this.hist[this.rows.length - 1];
     const generated = this.rows.length - this.promptLen;
-    if (!last || generated >= this.toGenerate || this.rows.length >= this.maxT - 1) { this.playing = false; this.syncButtons(); return; }
+    if (!last || generated >= this.toGenerate || this.rows.length >= this.maxT - 1) { this.playing = false; this.syncButtons(); if (this.pendingUrl) this.flushUrl(true); this.tryPendingIv(); return; }
     this.rows.push(this.sampleNext(last));
     this.request(this.rows.length - 1);
     this.renderChips();
@@ -258,7 +317,7 @@ export class ForwardView {
     $('fwdFly').addEventListener('click', () => this.toggleFly());
     $('fwdChips').addEventListener('click', (e) => {
       const b = e.target.closest('[data-pos]'); if (!b) return;
-      const p = +b.dataset.pos; this.viewPos = this.viewPos === p ? -1 : p; this.renderChips();
+      const p = +b.dataset.pos; this.viewPos = this.viewPos === p ? -1 : p; this.renderChips(); this.syncUrl();
     });
     const c = this.canvas;
     c.addEventListener('pointermove', (e) => { const r = c.getBoundingClientRect(); this.gaze = { x: (e.clientX - r.left) * this.dpr, y: (e.clientY - r.top) * this.dpr }; });
@@ -295,15 +354,72 @@ export class ForwardView {
     $('fwdWhy').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.explainWord($('fwdWhy').value); } });
     const nrn = $('nrn');
     nrn.addEventListener('click', (e) => {
-      if (e.target.closest('.x')) { this.nrn = null; nrn.hidden = true; return; }
+      if (e.target.closest('.x')) { this.nrn = null; nrn.hidden = true; this.syncUrl(); return; }
       const fb = e.target.closest('[data-f]');
       if (fb && this.nrn && this.nrn.kind === 'feat') { const j = +fb.dataset.f; this.nrn.sel = this.nrn.sel === j ? -1 : j; this.nrnKey = ''; return; }
       const ko = e.target.closest('[data-ko]');
       if (ko) { this.toggleKO(ko.dataset.ko, ko.dataset.key); return; }
+      const st = e.target.closest('[data-steer]');
+      if (st) {
+        const [s, a, pre] = st.dataset.steer.split(','), t = this.nrnTop;
+        const add = a === 'max' ? (t && t.key === st.dataset.key ? t.top : NaN) : +a;
+        if (Number.isFinite(add)) this.steer(st.dataset.key, +s, add, st.dataset.label, +pre || 0);
+        return;
+      }
+      const xb = e.target.closest('[data-expand]');
+      if (xb) { const [kind, k] = xb.dataset.expand.split(':'); this.openPassage(kind, +k); return; }
+      if (e.target.closest('[data-retry]') && this.nrn) { this.bookData.delete(`${this.nrn.l}:${this.nrn.sel}`); this.nrnKey = ''; return; }
+      if (e.target.closest('[data-blind]')) { this.blind = e.target.closest('[data-blind]').checked; try { localStorage.setItem('lf-blind', this.blind ? '1' : '0'); } catch {} this.nrnKey = ''; return; }
+      const go = e.target.closest('[data-goto]');
+      if (go) { const [l, i] = go.dataset.goto.split(':').map(Number); this.gotoNeuron(l, i); return; }
+      if (e.target.closest('[data-inputview]')) { this.showInput = !this.showInput; this.nrnKey = ''; return; }
+      if (e.target.closest('[data-graph]')) { this.openGraph(); return; }
+      const tr = e.target.closest('[data-trail]');
+      if (tr) { this.trailGo(tr.dataset.trail === 'back' ? this.trailIx - 1 : tr.dataset.trail === 'fwd' ? this.trailIx + 1 : +tr.dataset.trail); return; }
+      if (e.target.closest('[data-notes="export"]')) { this.exportNotes(); return; }
+      if (e.target.closest('[data-mine]')) { this.showMine = !this.showMine; this.nrnKey = ''; return; }
+      const bb = e.target.closest('[data-band]');
+      if (bb) { const k = +bb.dataset.band; this.band = this.band && this.band.key === `${this.nrn.l}:${this.nrn.sel}` && this.band.k === k ? null : { key: `${this.nrn.l}:${this.nrn.sel}`, k }; this.nrnKey = ''; return; }
+      if (e.target.closest('[data-notes="import"]')) { this.importNotes(); return; }
+      const br = e.target.closest('[data-bandretry]');
+      if (br) { this.bandWin.delete(br.dataset.bandretry); this.book.cache.delete(`b${br.dataset.bandretry}`); this.nrnKey = ''; return; }
+      if (e.target.closest('[data-probe]')) { this.runProbe(nrn.querySelector('#nrnProbe').value); return; }
       const b = e.target.closest('[data-n]'); if (!b || !this.nrn) return;
-      const i = +b.dataset.n; this.nrn.sel = this.nrn.sel === i ? -1 : i; this.nrnKey = '';
-      if (this.nrn.sel >= 0 && !this.nvocab.has(`${this.nrn.l}:${i}`)) this.worker.postMessage({ type: 'nvocab', l: this.nrn.l, i });
+      const i = +b.dataset.n;
+      if (this.nrn.sel === i) { this.nrn.sel = -1; this.nrnKey = ''; this.syncUrl(); } else this.gotoNeuron(this.nrn.l, i);
     });
+    nrn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.id === 'nrnProbe') { e.preventDefault(); this.runProbe(e.target.value); }
+      if (e.key === 'Enter' && e.target.id === 'nrnLabel') { e.preventDefault(); e.target.blur(); }
+      if (e.key === 'Enter' && e.target.id === 'nrnGoto') {  // "L5 880", "5:880", "5.880", "#880" (this layer)
+        e.preventDefault(); const m = /^\s*(?:L?(\d+)\s*[ .:#/]\s*#?)?(\d+)\s*$/i.exec(e.target.value);
+        const l = m && m[1] != null ? +m[1] : this.nrn ? this.nrn.l : 0, i = m ? +m[2] : -1;
+        this.gotoMsg = !m ? 'Write a layer and a neuron, like L5 880.' : l >= this.L ? `This model has layers 0 to ${this.L - 1}.` : i >= this.F ? `Each layer has neurons 0 to ${this.F - 1}.` : '';
+        if (!this.gotoMsg) { e.target.value = ''; this.gotoNeuron(l, i); } else this.nrnKey = '';
+      }
+    });
+    nrn.addEventListener('input', (e) => {  // a neuron's name or note is saved as it is typed, so a redraw can't lose it
+      if (!this.nrn || this.nrn.sel == null || this.nrn.sel < 0 || !/^nrn(Label|Note)$/.test(e.target.id)) return;
+      clearTimeout(this.noteT); const l = this.nrn.l, i = this.nrn.sel, f = e.target.id === 'nrnLabel' ? 'label' : 'note', v = e.target.value;
+      this.noteT = setTimeout(() => this.setNote(l, i, f, v, true), 250);
+    });
+    nrn.addEventListener('change', (e) => {  // a neuron's name or note, saved as it is written
+      if (!this.nrn || this.nrn.sel == null || this.nrn.sel < 0) return;
+      if (/^nrn(Label|Note)$/.test(e.target.id)) clearTimeout(this.noteT);  // the trimmed text wins over a pending keystroke save
+      if (e.target.id === 'nrnLabel' || e.target.id === 'nrnNote') this.setNote(this.nrn.l, this.nrn.sel, e.target.id === 'nrnLabel' ? 'label' : 'note', e.target.value);
+    });
+    addEventListener('keydown', (e) => {  // [ and ] walk the trail of neurons read
+      if (nrn.hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.metaKey || e.ctrlKey) return;
+      if (e.key === '[') { e.preventDefault(); this.trailGo(this.trailIx - 1); }
+      if (e.key === ']') { e.preventDefault(); this.trailGo(this.trailIx + 1); }
+    });
+    addEventListener('storage', (e) => {  // another tab named a neuron (or revealed one) on this model
+      const k = this.notesKey();
+      if (!this.ready || (e.key !== k && e.key !== `${k}:revealed`)) return;  // not another model's notes
+      const keep = this.revealed; this.loadNotes(); for (const k of keep) this.revealed.add(k);
+      this.nrnKey = ''; if (this.graph && this.graph.data) this.graphView.render(this);
+    });
+    this.graphView = new NeuronGraph(this);
     new ResizeObserver(() => this.resize()).observe(c);
   }
   // A finished pass: Play and Step layer carry on writing, `Tokens` more at a time.
@@ -332,6 +448,7 @@ export class ForwardView {
     this.syncButtons();
   }
   // How many positions have been captured, from the first on.
+  tokName(p) { return p < this.lead ? 'the document start' : `token ${p + 1 - this.lead}`; }  // your text counts from 1
   captured() { let n = 0; while (n < this.rows.length && this.hist[n]) n++; return n; }
   // Ask the worker for the projection when there are new states: at once when a run is done, at
   // most every 1.5 s while one plays (each refit runs in the worker, a few hundred ms at most).
@@ -341,7 +458,7 @@ export class ForwardView {
     const t = performance.now();
     if (!now && (this.playing || this.pending) && t - hs.t < 1500) return;
     hs.busy = true; hs.t = t; hs.id++;
-    this.worker.postMessage({ type: 'hidden', id: hs.id, n, fresh: !!hs.fresh });
+    this.worker.postMessage({ type: 'hidden', run: this.runId, id: hs.id, n, fresh: !!hs.fresh });
     hs.fresh = false;
   }
   // Place the states in the scene: centred, scaled so nearly all of them fit where the word cloud was.
@@ -430,8 +547,8 @@ export class ForwardView {
     hs.hover = best == null ? null : { p: Math.floor(best / D), dp: best % D };
     if (hs.hover) {
       const { p, dp } = hs.hover, s = scr[best], hp = this.hist[p], lp = hp.lens[dp];
-      if (!lp && !this.asked.has(`lens:${p}:${dp}`)) { this.asked.add(`lens:${p}:${dp}`); this.worker.postMessage({ type: 'lens', pos: p, depth: dp }); }
-      const txt = `${word(this.rows[p])} · token ${p + 1} · ${dp === 0 ? 'embedding' : `after layer ${dp - 1}`}${lp ? ` · would say ${word(lp.rows[0])} ${(lp.probs[0] * 100).toFixed(0)}%` : ''}`;
+      if (!lp && !this.asked.has(`lens:${p}:${dp}`)) { this.asked.add(`lens:${p}:${dp}`); this.worker.postMessage({ type: 'lens', run: this.runId, pos: p, depth: dp }); }
+      const txt = `${word(this.rows[p])} · ${this.tokName(p)} · ${dp === 0 ? 'embedding' : `after layer ${dp - 1}`}${lp ? ` · would say ${word(lp.rows[0])} ${(lp.probs[0] * 100).toFixed(0)}%` : ''}`;
       ov.font = `${10.5 * d}px "JetBrains Mono", monospace`;
       const w = ov.measureText(txt).width + 14 * d, x = Math.min(s[0] + 10 * d, this.FWscene - w - 4 * d), y = s[1] + 16 * d;
       ov.fillStyle = 'rgba(14,14,24,0.92)'; ov.fillRect(x, y - 9 * d, w, 18 * d);
@@ -504,6 +621,7 @@ export class ForwardView {
     const html = this.rows.map((r, p) => {
       const differs = this.ref && (p >= this.ref.rows.length || this.ref.rows[p] !== r);  // not A's token at this position
       const cls = ['chip', p < this.promptLen ? 'prompt' : 'gen', p === pos ? 'on' : '', !this.hist[p] ? 'wait' : '', differs ? 'diff' : ''].join(' ');
+      if (p < this.lead) return `<button type="button" class="${cls} doc" data-pos="${p}" title="&lt;|endoftext|&gt;: the start of a document, added in front as GPT-2 saw documents in training and as the neuron book reads them">⟨doc⟩</button>`;
       return `<button type="button" class="${cls}" data-pos="${p}">${esc(this.disp(this.tokens[r]))}</button>`;
     }).join('');
     this.$('fwdChips').innerHTML = html;
@@ -514,7 +632,7 @@ export class ForwardView {
   renderOutput() {
     if (!this.rows.length) return;
     const t = (r) => esc(this.tokens[r]);
-    const p = this.rows.slice(0, this.promptLen).map(t).join('');
+    const p = this.rows.slice(this.lead, this.promptLen).map(t).join('');
     const b = this.ref;
     let dv = -1;  // the first generated token that differs from the reference run
     if (b) for (let p = this.promptLen; p < this.rows.length; p++) if (this.rows[p] !== b.rows[p]) { dv = p; break; }
@@ -523,7 +641,7 @@ export class ForwardView {
     const last = this.hist[this.rows.length - 1];
     const forming = this.playing && last && this.beat >= 1 && last.lens[this.L]
       ? `<span class="now">${t((last.lens[Math.min(this.beat, this.L)] || last.lens[this.L]).rows[0])}</span>` : '';
-    const baseLine = !b ? '' : `<span class="base"><b>${b.label}${sameText && dv < 0 && !this.playing ? ', same answer' : ''}:</b> ${sameText ? '' : `<span class="p">${b.rows.slice(0, b.promptLen).map(t).join('')}</span>`}${b.rows.slice(b.promptLen).map(t).join('')}${b.rows.length && b.promptLen !== this.promptLen ? ' <i>(a different number of tokens: positions are matched by index)</i>' : ''}</span>`;
+    const baseLine = !b ? '' : `<span class="base"><b>${b.label}${sameText && dv < 0 && !this.playing ? ', same answer' : ''}:</b> ${sameText ? '' : `<span class="p">${b.rows.slice(this.lead, b.promptLen).map(t).join('')}</span>`}${b.rows.slice(b.promptLen).map(t).join('')}${b.rows.length && b.promptLen !== this.promptLen ? ' <i>(a different number of tokens: positions are matched by index)</i>' : ''}</span>`;
     const html = `<span class="p">${p}</span><span class="g">${g}</span>${forming}${this.playing ? '<span class="caret"></span>' : ''}${baseLine}`;
     if (html !== this.lastOut) { this.lastOut = html; const el = this.$('qOut'); el.innerHTML = html; el.scrollTop = el.scrollHeight; }
   }
@@ -561,19 +679,29 @@ export class ForwardView {
 
   // ---------- interventions ----------
   toggleKO(kind, key) {
-    const s = this.ko[kind]; if (s.has(key)) s.delete(key); else s.add(key);
+    const s = this.ko[kind];
+    if (kind === 'neurons') { const c = s.get(key); if (c && c.s === 0 && !c.add && !c.pre) s.delete(key); else s.set(key, { s: 0, add: 0, pre: 0, label: 'knocked out' }); }
+    else if (s.has(key)) s.delete(key); else s.add(key);
+    this.ivVer++; this.nrnKey = ''; this.syncIv();
+  }
+  // Steer neuron 'l:i': activation * s + add at every position (the same choice again restores it).
+  steer(key, s, add, label, pre = 0) {
+    const cur = this.ko.neurons.get(key);
+    if (cur && cur.s === s && cur.add === add && (cur.pre || 0) === pre) this.ko.neurons.delete(key); else this.ko.neurons.set(key, { s, add, pre, label });
     this.ivVer++; this.nrnKey = ''; this.syncIv();
   }
   koAtGaze() { const f = this.pinnedHead || this.focusHead; if (f && this.canAttribute) this.toggleKO('heads', `${f.l}:${f.h}`); }
   ivSpec() {
     const sp = (k) => [...this.ko[k]].map((x) => x.split(':').map(Number));
-    return { heads: sp('heads').map(([l, h]) => [l, h, 0]), mlps: sp('mlps').map(([l]) => [l, 0]), neurons: sp('neurons').map(([l, i]) => [l, i, 0]) };
+    const neurons = [...this.ko.neurons].map(([k, v]) => { const [l, i] = k.split(':').map(Number); return [l, i, v.s, v.add, v.pre || 0]; });
+    return { heads: sp('heads').map(([l, h]) => [l, h, 0]), mlps: sp('mlps').map(([l]) => [l, 0]), neurons };
   }
   koCount() { return this.ko.heads.size + this.ko.mlps.size + this.ko.neurons.size; }
   syncIv() {
     const n = this.koCount(), applied = this.ivRun ? JSON.stringify(this.ivRun) === JSON.stringify(this.ivSpec()) : n === 0;
     const el = this.$('fwdIvCount');
-    el.textContent = n ? `${n} knocked out${applied ? '' : ' · rerun'}` : 'No changes';
+    const steered = [...this.ko.neurons.values()].filter((v) => v.s !== 0 || v.add || v.pre).length;
+    el.textContent = n ? `${n - steered ? `${n - steered} knocked out` : ''}${n - steered && steered ? ', ' : ''}${steered ? `${steered} steered` : ''}${applied ? '' : ' · rerun'}` : 'No changes';
     el.classList.toggle('on', n > 0);
     this.$('fwdIvRun').disabled = !this.ready || !this.promptText || (applied && n > 0) || (n === 0 && !this.ivRun);
     this.$('fwdIvClear').disabled = n === 0 && !this.ivRun;
@@ -588,9 +716,11 @@ export class ForwardView {
     if (!any && this.ref && this.ref.kind === 'iv') this.setRef(null);
     this.run(this.promptText, gen);
     this.syncIv();
+    if (any && this.$('fwdSample').value !== 'greedy') this.setStatus('Sample decoding: the rerun\'s words can differ from the unchanged run\'s by chance, not only by your change. Choose Greedy to compare the two.');
   }
   clearKO() {
     for (const s of Object.values(this.ko)) s.clear();
+    if (this.graphView) { this.graphView.saved = null; this.graphView.note = ''; }  // nothing set aside to bring back
     this.ivVer++; this.nrnKey = '';
     if (this.ivRun) this.rerun(); else this.syncIv();
   }
@@ -623,13 +753,13 @@ export class ForwardView {
       if (d >= 0 && d <= L) depth = d;
     }
     const k = `lens:${pos}:${depth}`;
-    if (!h.lens[depth] && !this.asked.has(k)) { this.asked.add(k); this.worker.postMessage({ type: 'lens', pos, depth }); }
+    if (!h.lens[depth] && !this.asked.has(k)) { this.asked.add(k); this.worker.postMessage({ type: 'lens', run: this.runId, pos, depth }); }
     if (this.attrOn) this.ensureAttr(h, pos, this.attrTarget(h, pos));
   }
   ensureAttr(h, pos, row) {
     if (row == null || !h.targets || h.targets.includes(row)) return;
     const k = `attr:${pos}:${row}`;
-    if (!this.asked.has(k)) { this.asked.add(k); this.worker.postMessage({ type: 'attr', pos, row }); }
+    if (!this.asked.has(k)) { this.asked.add(k); this.worker.postMessage({ type: 'attr', run: this.runId, pos, row }); }
   }
   // "Why not Paris?": explain any word at the token on screen. A word typed without a leading
   // space gets one, as it would appear mid-sentence.
@@ -671,20 +801,23 @@ export class ForwardView {
     const el = this.$('nrn'), { depth, sel } = this.nrn, { pos } = v, L = this.L, spec = SAES[this.sae];
     if (!v.h || !spec) { el.hidden = true; return; }
     const r = this.saeRes.get(`${depth}:${pos}`), f = sel >= 0 ? this.saeFeat.get(`${depth}:${sel}`) : null;
-    if (!r && !this.asked.has(`sae:${depth}:${pos}`)) { this.asked.add(`sae:${depth}:${pos}`); this.worker.postMessage({ type: 'sae', depth, pos }); }
-    if (sel >= 0 && !f && !this.asked.has(`saeF:${depth}:${sel}`)) { this.asked.add(`saeF:${depth}:${sel}`); this.worker.postMessage({ type: 'saeFeat', depth, j: sel, n: this.rows.length }); }
+    if (!r && !this.asked.has(`sae:${depth}:${pos}`)) { this.asked.add(`sae:${depth}:${pos}`); this.worker.postMessage({ type: 'sae', run: this.runId, depth, pos }); }
+    // over the tokens run so far (later ones aren't this run's yet), asked again as the run grows
+    const cap = this.captured();
+    if (sel >= 0 && cap && (!f || f.acts.length < cap) && !this.asked.has(`saeF:${depth}:${sel}:${cap}`)) { this.asked.add(`saeF:${depth}:${sel}:${cap}`); this.worker.postMessage({ type: 'saeFeat', run: this.runId, depth, j: sel, n: cap }); }
     const key = `feat|${depth}|${pos}|${sel}|${!!r}|${!!f}|${this.saeMsg}|${this.npVer}|${this.hist.length}`;
     if (key === this.nrnKey) return;
     this.nrnKey = key;
     const word = (row) => esc(this.disp(this.tokens[row]));
     const info = (html) => `<span class="info" tabindex="0" role="note">i<span class="tip left">${html}</span></span>`;
     const where = depth === 0 ? 'The embedding' : `After layer ${depth - 1}`;  // as the field's row labels say
-    let html = `<header><b>${where} · features</b>${info(`<b>Features, not neurons.</b> A sparse autoencoder (SAE) is a second, small network, trained to rewrite the model's state at one layer as a sum of a few <b>features</b> from a learned dictionary of ${spec.n.toLocaleString()} directions. A single neuron responds to many unrelated things; a feature tends to mean one thing, so it is easier to name. This dictionary was trained by ${spec.by} (${spec.license}). The descriptions come from Neuronpedia, written by an AI model from each feature's strongest examples: good guesses, not ground truth. Derived: the SAE is a model of the model, and the line below says how much of this token's state it explains.`)}<button type="button" class="x" aria-label="Close">✕</button></header>`;
-    html += `<p class="note">At “${word(this.rows[pos])}” (token ${pos + 1}) · ${spec.n.toLocaleString()} features, streamed once from Hugging Face</p>`;
+    let html = `<header><b>${where} · features</b>${info(`<b>Features: a model of the model.</b> A sparse autoencoder (SAE) is a second, small network, trained to rewrite the model's state at one layer (the residual stream, which has no neurons of its own) as a sum of a few <b>features</b> from a learned dictionary of ${spec.n.toLocaleString()} directions. Useful for asking what is in this token's state; to see how the network itself computes, read its neurons first (handbook, Chapter 11). This dictionary was trained by ${spec.by} (${spec.license}). The descriptions come from Neuronpedia, written by an AI model from each feature's strongest examples: good guesses, not ground truth. Derived: the SAE is a model of the model, and the line below says how much of this token's state it explains.`)}<button type="button" class="x" aria-label="Close">✕</button></header>`;
+    html += `<p class="note">At “${word(this.rows[pos])}” (${this.tokName(pos)}) · ${spec.n.toLocaleString()} features, streamed once from Hugging Face</p>`;
     if (!r) html += `<p class="note">${esc(this.saeMsg || 'Working out the features…')}</p>`;
     else {
       html += `<div class="eff">${r.l0} of ${spec.n.toLocaleString()} features are active. Together they rebuild this token's state to a cosine of <b>${r.cos.toFixed(3)}</b>, missing <b>${(r.relErr * 100).toFixed(0)}%</b> of its size. ${info('How faithful the features are here. A cosine of 1 means the rebuilt state points exactly the same way as the real one; the miss is the size of what the features leave out, relative to the state. Whatever they miss is invisible in this view.')}</div>`;
-      if (pos === 0) html += `<p class="note warn">GPT-2's first token is unusual: this SAE was trained with a start-of-text token in front, which this tool doesn't add, so read the first token's features with care.</p>`;
+      if (pos < this.lead) html += `<p class="note warn">This is the document-start token, where the model parks attention: its features say little about the text.</p>`;
+      else if (pos === 0) html += `<p class="note warn">The first token is unusual: this SAE was trained with a start-of-text token in front, which this model's run doesn't have, so read the first token's features with care.</p>`;
       const amax = r.top.length ? r.top[0][1] : 1;
       html += `<div class="sec">Most active here ${info('The features firing hardest at this token, with what Neuronpedia says each one responds to. Pick one to see where it fires across the text and what it writes.')}</div><ol>`;
       for (const [j, a] of r.top) {
@@ -698,21 +831,30 @@ export class ForwardView {
       html += `<div class="sec">Feature #${sel} · where it fires ${info('This feature\'s activation at every token of the text so far: the brighter, the stronger. The outlined token is the one on screen.')}</div>`;
       if (!f) html += '<p class="note">Reading the text…</p>';
       else {
-        let fmax = 1e-6; for (const x of f.acts) if (x > fmax) fmax = x;
-        html += `<div class="text">${this.rows.map((row, p) => { const x = f.acts[p], t = Number.isNaN(x) ? 0 : Math.min(1, x / fmax); return `<span class="${p === pos ? 'here' : ''}" style="background:rgba(53,224,230,${(t * 0.75).toFixed(2)})" title="${Number.isNaN(x) ? 'not run yet' : x.toFixed(3)}">${esc(this.tokens[row])}</span>`; }).join('')}</div>`;
+        let fmax = 1e-6; for (let p = this.lead; p < f.acts.length; p++) if (f.acts[p] > fmax) fmax = f.acts[p];  // not the document start's outsized state
+        html += `<div class="text">${this.rows.map((row, p) => { if (p < this.lead) return '<span class="doc" title="the start of the document">⟨doc⟩</span>'; const x = p < f.acts.length ? f.acts[p] : NaN, t = Number.isNaN(x) ? 0 : Math.min(1, x / fmax); return `<span class="${p === pos ? 'here' : ''}" style="background:rgba(53,224,230,${(t * 0.75).toFixed(2)})" title="${Number.isNaN(x) ? 'not run yet' : x.toFixed(3)}">${esc(this.tokens[row])}</span>`; }).join('')}</div>`;
         html += `<div class="sec">What it writes ${info('The words this feature\'s direction pushes <span class="c">up</span> and <span class="a">down</span> most when it fires, through the final normalisation and output layer; what later layers do with it is not counted. Derived.')}</div>`;
         if (f.up) html += `<div class="words up">${f.up.map((w) => `<span>${word(w.row)}</span>`).join('')}</div><div class="words down" style="margin-top:6px">${f.down.map((w) => `<span>${word(w.row)}</span>`).join('')}</div>`;
       }
       html += `<p style="margin-top:10px"><a class="np" href="https://www.neuronpedia.org/${np.model}/${np.source}/${sel}" target="_blank" rel="noopener">Open feature #${sel} on Neuronpedia ↗</a></p>`;
     } else if (r) html += '<p class="note" style="margin-top:12px">Pick a feature to see where it fires across the text and what it writes.</p>';
-    const scroll = el.scrollTop;
+    this.redraw(el, html);
+  }
+  // Replace a drawer's contents, keeping its scroll and the keyboard's place: a field being typed
+  // in keeps its text and caret, a focused button its focus (found again by its data attributes).
+  redraw(el, html) {
+    const scroll = el.scrollTop, fa = document.activeElement, inside = fa && fa !== el && el.contains(fa);
+    const keep = inside && fa.id ? { id: fa.id, v: fa.value, s: fa.selectionStart, e: fa.selectionEnd } : null;
+    const attrs = inside && !fa.id ? [...fa.attributes].filter((a) => a.name.startsWith('data-')).map((a) => `[${a.name}="${CSS.escape(a.value)}"]`).join('') : '';
     el.innerHTML = html; el.hidden = false; el.scrollTop = scroll;
+    if (keep) { const b = el.querySelector(`#${keep.id}`); if (b) { b.value = keep.v; b.focus(); try { b.setSelectionRange(keep.s, keep.e); } catch {} } }
+    else if (attrs) { const b = el.querySelector(`${fa.tagName.toLowerCase()}${attrs}`); if (b) b.focus({ preventScroll: true }); }
   }
 
   // ---------- neuron inspector ----------
   openNeurons(l) {
     this.nrn = this.nrn && this.nrn.l === l ? null : { l, sel: -1 };
-    this.$('nrn').hidden = !this.nrn; this.nrnKey = '';
+    this.$('nrn').hidden = !this.nrn; this.nrnKey = ''; this.syncUrl();
   }
   // Rebuild the drawer when what it shows changes (position, word, layer, answers from the worker).
   renderNeurons(v) {
@@ -726,7 +868,8 @@ export class ForwardView {
       (this.gainAsked ||= new Set()).add(`${l}:${target}`);
       this.worker.postMessage({ type: 'gain', l, row: target });
     }
-    const key = `${l}|${sel}|${pos}|${target}|${!!gain}|${this.nvocab.has(`${l}:${sel}`)}|${this.hist.length}|${this.ivVer}`;
+    const bk = sel >= 0 && this.book ? this.bookData.get(`${l}:${sel}`) : null;
+    const key = `${l}|${sel}|${pos}|${target}|${!!gain}|${this.nvocab.has(`${l}:${sel}`)}|${this.hist.length}|${this.ivVer}|${!!this.book}|${bk && bk.ready}|${this.lk.has(`${pos}:${l}:${sel}`)}|${this.rd.has(`${pos}:${l}:${sel}`)}|${this.probe && this.probe.result ? this.probe.id : ''}|${this.showInput}|${this.trailIx}|${this.trail.length}|${this.blind}|${this.expand ? `${this.expand.id}${!!this.expand.result}` : ''}|${this.notes.size}|${this.band ? this.band.k : ''}|${this.showMine}|${(this.bandWin.get(`${l}:${sel}`) || {}).ready}`;
     if (key === this.nrnKey) return;
     this.nrnKey = key;
     const act = h.mlp.subarray(l * F, (l + 1) * F), word = (r) => esc(this.disp(this.tokens[r]));
@@ -737,38 +880,450 @@ export class ForwardView {
     const effOf = (i) => (gain && a ? act[i] * gain[i] * a.inv : null);
     const fmt = (x) => (x == null ? '' : `${x >= 0 ? '+' : ''}${x.toFixed(2)}`);
     const koN = (i) => this.ko.neurons.has(`${l}:${i}`);
-    const row = (i, m) => { const e = effOf(i); return `<li><button type="button" data-n="${i}" aria-current="${i === sel}"><span>${koN(i) ? '✕' : '#'}${i}</span>${bar(act[i], m, '#35e0e6')}<span class="num ${e == null ? '' : e >= 0 ? 'pos' : 'neg'}">${e == null ? act[i].toFixed(2) : fmt(e)}</span></button></li>`; };
+    const row = (i, m) => { const e = effOf(i), lb = this.label(l, i); return `<li><button type="button" data-n="${i}" aria-current="${i === sel}"${lb ? ` title="${esc(lb)}" class="named"` : ''}><span>${koN(i) ? '✕' : '#'}${i}</span>${bar(act[i], m, '#35e0e6')}<span class="num ${e == null ? '' : e >= 0 ? 'pos' : 'neg'}">${e == null ? act[i].toFixed(2) : fmt(e)}</span></button></li>`; };
     let active = 0, amax = 1e-6; for (let i = 0; i < F; i++) { const x = Math.abs(act[i]); if (x > 1) active++; if (x > amax) amax = x; }
     const byAct = Array.from({ length: F }, (_, i) => i).sort((p, q) => Math.abs(act[q]) - Math.abs(act[p])).slice(0, 8);
     let html = `<header><b>Layer ${l} · MLP</b>${info(`<b>The MLP is the part of each layer that works on one token at a time.</b> This layer has ${F.toLocaleString()} neurons. Each one reads the model's running state and fires by some amount: its <b>activation</b>, <span class="c">cyan</span> when positive, <span class="v">violet</span> when negative. ${gelu ? 'Here a neuron\'s activation is one projection passed through GELU.' : 'Here a neuron\'s activation is a gated product (SwiGLU): one projection passed through SiLU, times another.'} Whatever a neuron fires, it writes back along its own fixed direction, its <b>output weights</b>. Real: every number here comes straight from the model.`)}<button type="button" class="x" aria-label="Close the neuron inspector">✕</button></header>`;
+    html += this.mapBar();
     html += `<div class="fwd-row" style="margin:4px 0 6px"><button type="button" data-ko="mlps" data-key="${l}" aria-pressed="${this.ko.mlps.has(`${l}`)}">${this.ko.mlps.has(`${l}`) ? 'Restore' : 'Knock out'} this MLP</button>${this.ivRun || this.koCount() ? '<span class="note">then Rerun, under Playback</span>' : ''}</div>`;
-    html += `<p class="note">At “${word(this.rows[pos])}” (token ${pos + 1}) · ${active.toLocaleString()} of ${F.toLocaleString()} neurons above 1.0</p>`;
+    html += `<p class="note">At “${word(this.rows[pos])}” (${this.tokName(pos)}) · ${active.toLocaleString()} of ${F.toLocaleString()} neurons above 1.0</p>`;
     if (a) html += `<div class="eff">This layer's MLP pushed ${tw} by <b class="${a.mlps[l] >= 0 ? 'pos' : 'neg'}">${fmt(a.mlps[l])}</b>, out of a score of ${a.logit.toFixed(2)} above the average word.</div>`;
+    if (a && this.caps.links) html += `<div class="fwd-row" style="margin:4px 0 2px"><button type="button" data-graph>Trace the neurons behind ${tw}</button>${info('A graph of the model\'s own neurons that carry this word at this token: which ones push it directly, which feed those, and through which attention heads other tokens come in. Built from exact splits of each neuron\'s input; knock a group out and Rerun to test it.')}</div>`;
     html += `<div class="sec">Most active here ${info('The neurons firing hardest at this token, either way. Firing hard is not the same as mattering: a neuron can fire strongly and write almost nothing toward the word. The number on the right is its effect on the word when that is known, else its activation.')}</div><ol>${byAct.map((i) => row(i, amax)).join('')}</ol>`;
     if (gain && a) {
       const eff = Array.from({ length: F }, (_, i) => [effOf(i), i]).sort((p, q) => q[0] - p[0]);
       const emax = Math.max(1e-6, Math.abs(eff[0][0]), Math.abs(eff[F - 1][0]));
-      const effRow = ([e, i]) => `<li><button type="button" data-n="${i}" aria-current="${i === sel}"><span>${koN(i) ? '✕' : '#'}${i}</span>${bar(e, emax, '#35e0e6')}<span class="num ${e >= 0 ? 'pos' : 'neg'}">${fmt(e)}</span></button></li>`;
+      const effRow = ([e, i]) => `<li><button type="button" data-n="${i}" aria-current="${i === sel}"${this.label(l, i) ? ` title="${esc(this.label(l, i))}" class="named"` : ''}><span>${koN(i) ? '✕' : '#'}${i}</span>${bar(e, emax, '#35e0e6')}<span class="num ${e >= 0 ? 'pos' : 'neg'}">${fmt(e)}</span></button></li>`;
       html += `<div class="sec">Toward ${tw} ${info(`Each neuron's <b>direct effect</b> on the word's score: its activation times how much its output weights point at that word, through the final normalisation. Added up over all ${F.toLocaleString()} neurons, plus the layer's bias, this is the layer's share above. Direct path only: what later layers make of it is counted in those layers.`)}</div><ol>${eff.slice(0, 6).map(effRow).join('')}</ol>`;
       html += `<div class="sec">Against ${tw}</div><ol>${eff.slice(-4).reverse().map(effRow).join('')}</ol>`;
     } else if (target != null) html += `<p class="note">Working out each neuron's effect on ${tw}…</p>`;
-    if (sel >= 0) {
-      const vals = []; let vmax = 1e-6;
-      for (let p = 0; p < this.rows.length; p++) { const hp = this.hist[p]; const x = hp ? hp.mlp[l * F + sel] : null; vals.push(x); if (x != null) vmax = Math.max(vmax, Math.abs(x)); }
-      const tok = vals.map((x, p) => {
-        const t = x == null ? 0 : Math.min(1, Math.abs(x) / vmax), bg = x == null ? 'transparent' : x >= 0 ? `rgba(53,224,230,${(t * 0.75).toFixed(2)})` : `rgba(169,150,255,${(t * 0.75).toFixed(2)})`;
-        return `<span class="${p === pos ? 'here' : ''}" style="background:${bg}" title="${x == null ? 'not run yet' : x.toFixed(3)}">${esc(this.tokens[this.rows[p]])}</span>`;
-      }).join('');
-      const e = effOf(sel), nv = this.nvocab.get(`${l}:${sel}`);
-      html += `<div class="sec">Neuron #${sel} · where it fires ${info('This neuron\'s activation at every token of the text so far: the brighter the background, the stronger it fired (<span class="c">cyan</span> positive, <span class="v">violet</span> negative). Neurons usually respond to a pattern, such as a kind of word, a position or a topic, so reading across the text is the quickest way to guess what it detects. Many respond to several unrelated things at once. The outlined token is the one on screen.')}</div>`;
-      html += `<div class="text">${tok}</div>`;
-      html += `<div class="fwd-row" style="margin:8px 0 0"><button type="button" data-ko="neurons" data-key="${l}:${sel}">${koN(sel) ? 'Restore' : 'Knock out'} neuron #${sel}</button></div>`;
-      html += `<div class="eff" style="margin-top:8px">Here: activation <b>${act[sel].toFixed(3)}</b>${e == null ? '' : ` · effect on ${tw} <b class="${e >= 0 ? 'pos' : 'neg'}">${fmt(e)}</b>`}</div>`;
-      html += `<div class="sec">What it writes ${info('The words this neuron\'s output weights push <span class="c">up</span> and <span class="a">down</span> most whenever it fires positively (the other way round when negative). Worked out from its weights through the final normalisation and output layer, so it ignores what later layers do with its output. Derived.')}</div>`;
+    if (sel >= 0) html += this.neuronSection(v, l, sel, act, effOf, tw, info, fmt, word);
+    else html += '<p class="note" style="margin-top:12px">Pick a neuron to read it: where it fires, its strongest examples on both sides, what feeds it, what reads it, and what it writes.</p>';
+    this.redraw(el, html);
+  }
+
+
+
+  // The top of the drawer: the trail of neurons read, a go-to box, and the reader's own index.
+  mapBar() {
+    const crumbs = this.trail.map((t, k) => ({ t, k })).slice(Math.max(0, this.trailIx - 4), this.trailIx + 3);
+    let html = `<div class="trail"><button type="button" class="mini" data-trail="back" ${this.trailIx > 0 ? '' : 'disabled'} title="Back ([)">‹</button><button type="button" class="mini" data-trail="fwd" ${this.trailIx < this.trail.length - 1 ? '' : 'disabled'} title="Forward (])">›</button>${crumbs.map(({ t, k }) => `<button type="button" class="crumb" data-trail="${k}" aria-current="${k === this.trailIx}">${this.nname(t.l, t.i)}</button>`).join('<span class="sep">›</span>')}`;
+    html += `<input id="nrnGoto" class="goto" type="text" placeholder="go to L5 880" aria-label="Go to a neuron: layer and number"><button type="button" class="mini" data-mine aria-pressed="${this.showMine}" title="The neurons you have named in this model">yours (${this.notes.size})</button><label class="check blind mini" title="Hide each neuron's examples, shape, neighbours, words and activations until you have written a reading and tested it (kept on until you turn it off)"><input type="checkbox" data-blind ${this.blind ? 'checked' : ''}> blind</label><span class="notes-io"><button type="button" class="mini" data-notes="export" title="Download every neuron you have named, as one JSON file (with a Markdown summary inside)" ${this.notes.size ? '' : 'disabled'}>export</button><button type="button" class="mini" data-notes="import" title="Load notes exported before">import</button></span></div>${this.gotoMsg ? `<p class="note warn">${esc(this.gotoMsg)}</p>` : ''}`;
+    if (this.showMine) {
+      const list = [...this.notes].map(([k, v]) => { const [l, i] = k.split(':').map(Number); return { l, i, v }; }).sort((a, b) => a.l - b.l || a.i - b.i);
+      html += list.length ? `<ol class="mine">${list.map(({ l, i, v }) => `<li><button type="button" class="link" data-goto="${l}:${i}">L${l} #${i}</button> <span>${esc(v.label || '')}</span>${v.note ? `<span class="nn">${esc(v.note.length > 80 ? v.note.slice(0, 79) + '…' : v.note)}</span>` : ''}</li>`).join('')}</ol>` : '<p class="note">No neurons named yet: give one a name below its number, and it is listed here, in the graph and in every list.</p>';
+    }
+    return html;
+  }
+
+  // A few random tokens from one band of a neuron's range (the book's band samples), each with the
+  // text before it: where the meaning radiates out from its strongest examples.
+  bandSection(l, n, k, d, tokOf, shade) {
+    const key = `${l}:${n}`;
+    let st = this.bandWin.get(key);
+    if (!st) {
+      st = { ready: false, list: [] }; this.bandWin.set(key, st);
+      this.book.bands(l, n).then((all) => Promise.all(all.map(async (b) => ({ ...b, ...(await this.book.window(b.at)) }))))
+        .then((list) => { st.list = list; st.ready = true; this.nrnKey = ''; })
+        .catch((e) => { st.err = e.message; st.ready = true; this.nrnKey = ''; });  // kept until Try again
+    }
+    const lo = 1 / 2 ** (k + 1), hi = 1 / 2 ** k;
+    let html = `<div class="sec">${k === 0 ? 'Above half its max' : `Between ${lo === 1 / 4096 ? '0' : `1/${2 ** (k + 1)}`} and 1/${2 ** k} of its max`}</div>`;
+    if (!st.ready) return html + '<p class="note">Reading them…</p>';
+    if (st.err) return html + `<p class="note">Couldn't read them (${esc(st.err)}). <button type="button" class="mini" data-bandretry="${key}">Try again</button></p>`;
+    const list = st.list.map((b, ix) => ({ ...b, ix })).filter((b) => b.band === k);
+    if (!list.length) return html + '<p class="note">No samples kept for this band.</p>';
+    const mx = Math.max(d.max, 1e-6), ex = this.expand && this.expand.key === key && this.expand.kind === 'band' ? this.expand : null;
+    const li = (b) => `<li><span class="num pos" title="activation">${b.v.toFixed(2)}<small>${(100 * b.v / mx).toFixed(1)}%</small></span><span class="text ex">${b.ids.map((id, j) => (id === this.book.meta.eot ? '<span class="doc">⟨doc⟩</span>' : `<span class="${j === b.k ? 'here' : ''}" style="${j === b.k ? `background:${shade(b.v, mx)}` : ''}">${esc(tokOf(id))}</span>`)).join('')}</span><button type="button" class="mini more" data-expand="band:${b.ix}" title="The whole passage up to here, run through the model, every token shaded">${ex && ex.k === b.ix ? '−' : '↑'}</button></li>${ex && ex.k === b.ix ? this.passageHtml(ex, false, mx, shade) : ''}`;
+    return html + `<ol class="exs">${list.map(li).join('')}</ol><p class="note">Random tokens from this band, not its strongest${this.book.meta.band_spacing ? `, no two within ${this.book.meta.spacing || this.book.meta.window} tokens in one document` : '; several may come from one document'}. ↑ shades the whole passage, to see why it fires here.</p>`;
+  }
+  // An opened passage, shaded token by token (by its input for the other side)
+  passageHtml(ex, input, scale, shade) {
+    if (!ex.result) return '<li class="passage"><p class="note">Running the passage…</p></li>';
+    const r = ex.result;
+    return `<li class="passage">${ex.cut ? `<p class="note">The first ${ex.cut} tokens of this document don't fit the browser kernel's window, so this runs on the ${r.rows.length} tokens around the example; its value may differ from the book's.</p>` : ''}<div class="text">${r.rows.map((rw, p) => `<span class="${p === ex.at - 1 ? 'here' : ''}" style="background:${shade(input ? r.pres[p] : r.acts[p], scale)}" title="${(input ? r.pres[p] : r.acts[p]).toFixed(3)}">${esc(this.tokens[rw])}</span>`).join('')}</div></li>`;
+  }
+  // ---------- reading one neuron ----------
+  gotoNeuron(l, i, push = true) {
+    this.nrn = { l, sel: i }; this.$('nrn').hidden = false; this.nrnKey = ''; this.gotoMsg = '';
+    if (!this.nvocab.has(`${l}:${i}`)) this.worker.postMessage({ type: 'nvocab', l, i });
+    if (push) {
+      const cur = this.trail[this.trailIx];
+      if (!cur || cur.l !== l || cur.i !== i) { this.trail = this.trail.slice(0, this.trailIx + 1); this.trail.push({ l, i }); this.trailIx = this.trail.length - 1; }
+    }
+    this.$('nrn').scrollTop = 0;
+    this.syncUrl();
+  }
+  trailGo(ix) {
+    if (ix < 0 || ix >= this.trail.length) return;
+    this.trailIx = ix; const t = this.trail[ix];
+    this.gotoNeuron(t.l, t.i, false);
+  }
+  // ---------- the reader's notes ----------
+  notesKey() { return `lf-notes:${this.repo || this.modelName || this.DATA}`; }
+  loadNotes() {
+    this.notes = new Map(); this.revealed = new Set();
+    try { for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem(this.notesKey()) || '{}'))) this.notes.set(k, v); } catch {}
+    try { for (const k of JSON.parse(localStorage.getItem(`${this.notesKey()}:revealed`) || '[]')) this.revealed.add(k); } catch {}
+  }
+  // a neuron read blind stays revealed once a reading came before a test, whatever is edited after
+  // (merged with what another tab may have saved since, never overwriting it)
+  reveal(k) {
+    if (this.revealed.has(k)) return; this.revealed.add(k);
+    try { const key = `${this.notesKey()}:revealed`, cur = new Set(JSON.parse(localStorage.getItem(key) || '[]')); for (const x of this.revealed) cur.add(x); localStorage.setItem(key, JSON.stringify([...cur])); this.revealed = cur; } catch {}
+  }
+  // Saves only the neurons changed here, onto what is stored now: another tab on the same model
+  // keeps its own names (the storage event below brings them into this one).
+  saveNotes(keys) {
+    try {
+      const cur = JSON.parse(localStorage.getItem(this.notesKey()) || '{}');
+      for (const k of keys) { const v = this.notes.get(k); if (v) cur[k] = v; else delete cur[k]; }
+      localStorage.setItem(this.notesKey(), JSON.stringify(cur));
+      this.notes = new Map(Object.entries(cur));
+    } catch (e) { this.setStatus(`Couldn't save your notes in this browser (${e.message}): export them to keep them.`); }
+  }
+  setNote(l, i, field, text, typing = false) {
+    const k = `${l}:${i}`, n = { ...(this.notes.get(k) || {}) };
+    n[field] = typing ? text : text.trim(); n.at = new Date().toISOString();
+    if (!n.label && !n.note) this.notes.delete(k); else this.notes.set(k, n);
+    this.saveNotes([k]); if (!typing) this.nrnKey = '';
+    if (this.graph && this.graph.data) this.graphView.render(this);
+  }
+  label(l, i) { const n = this.notes.get(`${l}:${i}`); return n && n.label ? n.label : ''; }
+  // "L5 #880 “label”" for lists; the label is what the reader has called it
+  nname(l, i, withLayer = true) { const lb = this.label(l, i); return `${withLayer ? `L${l} ` : ''}#${i}${lb ? ` “${esc(lb.length > 28 ? lb.slice(0, 27) + '…' : lb)}”` : ''}`; }
+  exportNotes() {  // one file: the notes as JSON, with a readable Markdown summary inside
+    if (!this.notes.size) { this.setStatus('No named neurons to export yet.'); return; }
+    const model = this.repo || this.modelName, list = [...this.notes].map(([k, v]) => { const [l, i] = k.split(':').map(Number); return { layer: l, neuron: i, ...v }; }).sort((a, b) => a.layer - b.layer || a.neuron - b.neuron);
+    const markdown = `# Neuron notes: ${model}\n\n${list.map((n) => `- **L${n.layer} #${n.neuron}**${n.label ? ` ${n.label}` : ''}${n.note ? `\n  ${n.note.replace(/\n/g, '\n  ')}` : ''}`).join('\n')}\n`;
+    const json = JSON.stringify({ schema: 'latent-fovea-notes/1', model, layers: this.L, neurons_per_layer: this.F, exported: new Date().toISOString(), neurons: list, markdown }, null, 2);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = `neuron-notes-${String(model).replace(/[^\w.-]+/g, '_')}.json`; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    this.setStatus(`Exported ${list.length} named neuron${list.length > 1 ? 's' : ''}.`);
+  }
+  importNotes() {  // merges by the newer note; refuses notes made on a model of another shape
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
+    inp.onchange = async () => {
+      try {
+        const d = JSON.parse(await inp.files[0].text());
+        if (!Array.isArray(d.neurons)) throw new Error('no neurons in this file');
+        if ((d.layers && d.layers !== this.L) || (d.neurons_per_layer && d.neurons_per_layer !== this.F)) throw new Error(`these notes are for a model with ${d.layers} layers of ${d.neurons_per_layer} neurons (${d.model}); this one has ${this.L} of ${this.F}`);
+        const model = this.repo || this.modelName;
+        let n = 0; const changed = [];
+        for (const x of d.neurons) {
+          if (!Number.isInteger(x.layer) || !Number.isInteger(x.neuron) || x.layer < 0 || x.layer >= this.L || x.neuron < 0 || x.neuron >= this.F) continue;
+          if (!String(x.label || '').trim() && !String(x.note || '').trim()) continue;  // nothing written
+          const k = `${x.layer}:${x.neuron}`, cur = this.notes.get(k);
+          if (cur && cur.at && x.at && cur.at > x.at) continue;  // keep the newer
+          this.notes.set(k, { label: String(x.label || '').slice(0, 80), note: String(x.note || '').slice(0, 4000), at: x.at || new Date().toISOString() }); n++; changed.push(k);
+        }
+        this.saveNotes(changed); this.nrnKey = ''; if (this.graph && this.graph.data) this.graphView.render(this);
+        this.setStatus(`Imported ${n} neuron note${n === 1 ? '' : 's'}${d.model && d.model !== model ? ` (made on ${d.model})` : ''}.`);
+      } catch (e) { this.setStatus(`Couldn't import those notes: ${e.message}`); }
+    };
+    inp.click();
+  }
+  // ---------- a shareable address ----------
+  // #<model>?ask=<text>&gen=<tokens>[&dec=sample]&p=<token>&n=<layer>.<neuron>&g=1&gk=<0|1>&w=<word row>
+  // and the interventions in force at the last Rerun: iv=<l>:<i>:<scale>:<add>:<pre>_…, h=<l>.<h>_…,
+  // m=<l>_…, so a link reproduces a finding. gk says whether the graph was traced on the changed
+  // model (1) or the unchanged one (0).
+  static encodeIv(neurons) { return neurons.map((x) => x.map((y) => +(+y).toFixed(4)).join(':')).join('_'); }
+  static decodeIv(s) {
+    return (s || '').split('_').filter(Boolean).map((t) => t.split(':').map(Number))
+      .filter((x) => x.length >= 2 && x.length <= 5 && x.every(Number.isFinite) && Number.isInteger(x[0]) && Number.isInteger(x[1]));
+  }
+  syncUrl() {
+    if (!this.urlDone) return;  // the shared address is still being applied
+    try {
+      const u = new URL(location.href), q = u.searchParams;
+      for (const k of SHARED_KEYS) q.delete(k);
+      if (this.modelHash) u.hash = this.modelHash;  // the model it was made on
+      if (this.promptText && this.promptText.length <= 400) {
+        q.set('ask', this.promptText);
+        if (this.toGenerate != null) q.set('gen', this.toGenerate);
+        if (this.$('fwdSample').value !== 'greedy') q.set('dec', this.$('fwdSample').value);
+        const v = this.view(), sel = this.nrn && this.nrn.sel >= 0 ? this.nrn : null;
+        if (v.h && this.viewPos >= 0) q.set('p', v.pos);
+        if (sel) q.set('n', `${sel.l}.${sel.sel}`);
+        if (this.graph && !this.graphView.el.hidden) { q.set('g', '1'); q.set('gk', this.graph.ko ? '1' : '0'); q.set('w', this.graph.row); q.set('p', this.graph.pos); }
+        const sp = this.ivRun || null;
+        if (sp) {
+          if (sp.neurons.length) q.set('iv', ForwardView.encodeIv(sp.neurons));
+          if (sp.heads.length) q.set('h', sp.heads.map(([l, h]) => `${l}.${h}`).join('_'));
+          if (sp.mlps.length) q.set('m', sp.mlps.map(([l]) => l).join('_'));
+        }
+      } else if (this.promptText && !this.longNoted) { this.longNoted = true; this.setStatus('This prompt is over 400 characters, so the page\'s address can\'t carry it: a link won\'t reopen it.'); }
+      history.replaceState(history.state, '', u);
+    } catch {}
+  }
+  // Once the shared text has run: restore its interventions (and rerun), then the token, the
+  // neuron and the graph, each when the run has reached it. A graph traced on the unchanged
+  // model (gk=0) is opened first, and the interventions applied after it is traced.
+  applyUrl() {
+    this.urlDone = true;
+    const q = this.shared;
+    const num = (x) => x.split('.').map(Number);
+    const iv = ForwardView.decodeIv(q.get('iv')), hs = (q.get('h') || '').split('_').filter(Boolean).map(num), ms = (q.get('m') || '').split('_').filter(Boolean).map(Number);
+    const p = q.get('p'), n = q.get('n'), g = q.get('g') === '1', w = q.get('w') != null ? +q.get('w') : null;
+    const changes = (iv.length || hs.length || ms.length) && !this.ivRun;
+    // the changes wait for the unchanged run to finish writing, so the rerun writes as much and
+    // the two can be compared word by word
+    if (changes && g && q.get('gk') === '0') {  // trace on this unchanged run, then change the model
+      this.pendingIv = { iv, hs, ms, graph: true };
+      this.shared = new URLSearchParams([...q].filter(([k]) => ['p', 'n'].includes(k)));
+      this.pendingUrl = { p: p != null ? +p : null, n: null, g, w };
+      this.flushUrl();
+      return;
+    }
+    if (changes) {
+      this.pendingIv = { iv, hs, ms };
+      this.shared = new URLSearchParams([...q].filter(([k]) => !['iv', 'h', 'm'].includes(k)));  // applied: the rerun brings the rest
+      this.tryPendingIv();
+      return;
+    }
+    this.pendingUrl = { p: p != null ? +p : null, n, g, w };
+    this.flushUrl();
+  }
+  tryPendingIv() {
+    const u = this.pendingIv;
+    if (!u || this.playing || (u.graph && !(this.graph && this.graph.data))) return;
+    this.pendingIv = null; this.applyIv(u);
+  }
+  applyIv({ iv, hs, ms }) {
+    for (const [l, i, sc = 0, add = 0, pre = 0] of iv) if (l >= 0 && l < this.L && i >= 0 && i < this.F) this.ko.neurons.set(`${l}:${i}`, { s: sc, add, pre, label: sc === 0 && !add && !pre ? 'knocked out' : sc === 0 ? `held at ${add} (shared link)` : `steered (shared link)` });
+    for (const [l, h] of hs) if (l < this.L && h < this.H) this.ko.heads.add(`${l}:${h}`);
+    for (const l of ms) if (l < this.L) this.ko.mlps.add(`${l}`);
+    this.ivVer++; this.urlDone = false; this.rerun();  // the shared state applies to the rerun
+  }
+  flushUrl(ended = false) {  // apply what the run has reached; a token the model hasn't written yet waits for it
+    const u = this.pendingUrl; if (!u) return;
+    const reached = u.p == null || (u.p < this.hist.length && this.hist[u.p]);
+    if (!reached && !ended) return;
+    if (!reached && this.pendingIv) this.pendingIv.graph = false;  // no graph to wait for
+    if (!reached) this.setStatus(`The shared link points at token ${u.p + 1 - this.lead}, which this run didn't reach${this.$('fwdSample').value !== 'greedy' ? ' (sampled text differs from run to run)' : ''}.`);
+    else if (u.p != null) this.viewPos = u.p;  // held there, even while the run writes on
+    if (u.n) { const [l, i] = u.n.split('.').map(Number); if (l >= 0 && l < this.L && i >= 0 && i < this.F) this.gotoNeuron(l, i); }
+    if (u.g && reached) setTimeout(() => this.openGraph(u.w), 300);
+    this.pendingUrl = null;
+  }
+  bookFor(l, i) {
+    if (!this.book) return null;
+    const k = `${l}:${i}`;
+    if (!this.bookData.has(k)) {
+      const rec = { ready: false };
+      this.bookData.set(k, rec);
+      const done = () => { rec.ready = true; this.nrnKey = ''; if (this.graph && this.graph.data) { clearTimeout(this.graphT); this.graphT = setTimeout(() => this.graphView.render(this), 120); } };
+      this.book.get(l, i).then((d) => { rec.d = d; done(); }).catch((e) => { rec.err = e.message; done(); });
+    }
+    return this.bookData.get(k);
+  }
+  runProbe(text) {
+    const { l, sel } = this.nrn || {};
+    if (sel == null || sel < 0 || !text || !text.trim()) return;
+    const rows = this.tok.encode(text).map((i) => this.rowOf[i]).filter((r) => r >= 0).slice(0, this.maxT - 1);
+    if (!rows.length) return;
+    this.probe = { id: (this.probe ? this.probe.id : 0) + 1, l, i: sel, text, result: null, at: new Date().toISOString() };
+    const eot = this.eotRow();  // start after <|endoftext|>, as the corpus examples do, not on the attention sink
+    this.worker.postMessage({ type: 'probe', id: this.probe.id, l, i: sel, rows: eot != null ? [eot, ...rows] : rows, lead: eot != null ? 1 : 0 });
+    this.nrnKey = '';
+  }
+  eotRow() { const r = this.tok instanceof GPT2Tokenizer && this.rowOf ? this.rowOf[50256] : null; return r != null && r >= 0 ? r : null; }
+  // An example's whole passage, from its document's start, run through the unchanged model.
+  async openPassage(kind, k) {
+    const { l, sel } = this.nrn || {}, key = `${l}:${sel}`;
+    if (this.expand && this.expand.key === key && this.expand.kind === kind && this.expand.k === k) { this.expand = null; this.nrnKey = ''; return; }
+    const rec = this.bookData.get(key), bw = this.bandWin.get(key);
+    const ex = kind === 'band' ? bw && bw.list[k] : rec && rec.d && rec.d[kind] && rec.d[kind][k]; if (!ex) return;
+    const id = (this.expand ? this.expand.id : 0) + 1;
+    this.expand = { id, key, kind, k, at: 0, result: null }; this.nrnKey = '';
+    try {
+      const pg = await this.book.passage(ex.at);
+      if (!this.expand || this.expand.id !== id) return;
+      // the passage from its document's start (ids[0] is <|endoftext|>); if it doesn't fit the
+      // kernel's window, keep the tokens nearest the example, after a fresh <|endoftext|>
+      let ids = pg.ids, at = pg.at;
+      if (ids.length > this.maxT) { const keep = this.maxT - 1, cut = ids.length - keep; ids = [ids[0], ...ids.slice(cut)]; at -= cut - 1; this.expand.cut = cut - 1; }
+      this.expand.at = at;
+      const rows = ids.map((t) => this.rowOf[t]).map((r) => (r == null || r < 0 ? 0 : r));
+      this.worker.postMessage({ type: 'probe', kind: 'expand', id, l, i: sel, rows, lead: 1 });
+    } catch (e) { this.expand = null; this.setStatus(`Couldn't read that passage: ${e.message}`); }
+  }
+  openGraph(want) {
+    const v = this.view(); if (!v.h) return;
+    const row = want != null && want >= 0 ? want : this.attrTarget(v.h, v.pos); if (row == null) return;
+    const key = `${v.pos}:${row}:${this.ivVer}`, done = this.traces.get(key);  // traces are cleared with each new run
+    this.graph = { pos: v.pos, row, key, at: this.tokens[this.rows[v.pos]] || '', data: done || null, progress: 'Tracing…' };
+    this.graphView.show();
+    if (!done) this.worker.postMessage({ type: 'graph', pos: v.pos, row, runId: this.textId, ivVer: this.ivVer });
+    const r = this.ivRun;  // the graph says which model it was traced on: the one last rerun
+    this.graph.ko = r ? r.neurons.length + r.heads.length + r.mlps.length : 0;
+    this.syncUrl();
+  }
+  // The selected neuron, read several ways (see the handbook, §11.3).
+  neuronSection(v, l, sel, act, effOf, tw, info, fmt, word) {
+    const { pos } = v, F = this.F, key = `${l}:${sel}`, swiglu = this.caps.act === 'swiglu';
+    const tokOf = (id) => { const r = this.rowOf[id]; return r == null || r < 0 ? '' : this.tokens[r]; };
+    const shade = (x, m) => { const t = Math.min(1, Math.abs(x) / (m || 1)); return x >= 0 ? `rgba(53,224,230,${(t * 0.75).toFixed(2)})` : `rgba(169,150,255,${(t * 0.75).toFixed(2)})`; };
+    const bar = (x, m) => `<span class="bar"><i style="${x >= 0 ? `left:50%;width:${Math.min(50, Math.abs(x) / m * 50)}%;background:#35e0e6` : `right:50%;width:${Math.min(50, Math.abs(x) / m * 50)}%;background:#a996ff`}"></i></span>`;
+    // the reader's name and note for this one
+    const note = this.notes.get(key) || {};
+    let html = `<div class="sec">Neuron L${l} #${sel}</div>`;
+    html += `<input id="nrnLabel" class="nlabel" type="text" maxlength="80" placeholder="Name it: the distinction it draws" value="${esc(note.label || '')}" aria-label="Your name for this neuron"><textarea id="nrnNote" class="nnote" rows="2" placeholder="Your reading, written before you test it, and what would break it" aria-label="Your notes on this neuron">${esc(note.note || '')}</textarea>`;
+    // blind reading: the neuron's examples, words and neighbours stay hidden until a test has run
+    const pr = this.probe && this.probe.l === l && this.probe.i === sel && this.probe.kind !== 'expand' ? this.probe : null;
+    // revealed once a reading has been written and a sentence tested after it; it stays revealed
+    if (pr && pr.result && note.note && note.at && note.at <= pr.at) this.reveal(key);
+    const hidden = this.blind && !this.revealed.has(key);
+    if (this.blind) html += `<p class="note">${hidden ? 'Reading blind' : 'Reading blind: revealed by your test'} ${info('Read blind (at the top of the drawer, kept on until you turn it off) hides each neuron\'s examples, shape, neighbours, the words it writes, its activations in this text and its maximum, until you have written your reading in the note and then tested a sentence of your own below; after that it stays revealed. A test only counts if the reading came first. The layer\'s lists above still show its value at the token on screen, among the others.')}</p>`;
+    // what it does in this text, and how strongly: values are shown against the neuron's own range
+    const bk = this.bookFor(l, sel), stats = bk && bk.ready && bk.d ? bk.d : null;
+    // its range in this text, read from the unchanged run when a changed one is on screen
+    const base = this.ivRun && this.ref && this.ref.kind === 'iv' ? this.ref.hist : this.hist;
+    let seen = 0, seenMin = 0, preMin = Infinity;
+    for (let p = 1; p < base.length; p++) { const hp = base[p]; if (!hp) continue; const x = hp.mlp[l * F + sel]; seen = Math.max(seen, x); seenMin = Math.min(seenMin, x); if (hp.pre) preMin = Math.min(preMin, hp.pre[l * F + sel]); }
+    const loading = !!this.book && !(bk && bk.ready);  // its book entry is on its way: its max and trough aren't known yet
+    const top = stats ? stats.max : seen, dead = top <= 1e-3, cur = this.ko.neurons.get(key);
+    this.nrnTop = { key, top: +top.toFixed(3) };  // what "Hold at its max" sets, kept out of the page while reading blind
+    // steering, kept inside what the network itself produces: knock out, set to its maximum, or
+    // push it the other way only as far as the network itself takes it: GELU to the lowest value
+    // its own input reaches in the corpus (never below GELU's trough, -0.17), SwiGLU to its most
+    // negative value seen in this text
+    const gelu = (x) => 0.5 * x * (1 + Math.tanh(0.7978845608 * (x + 0.044715 * x * x * x)));
+    // the lowest input it reaches (the book's, else this text's when the input was recorded); GELU bottoms out at -0.17 near -0.75
+    const lowIn = stats ? stats.minIn : Number.isFinite(preMin) ? preMin : -Infinity;
+    const trough = +gelu(Math.max(lowIn, -0.7518)).toFixed(3);
+    const neg = swiglu ? { s: 0, add: +seenMin.toFixed(3), pre: 0 } : { s: 0, add: trough, pre: 0 };
+    const negOff = loading || (swiglu ? seenMin > -1e-3 : trough > -1e-3);
+    const isOn = (o) => !!cur && cur.s === o.s && cur.add === o.add && (cur.pre || 0) === o.pre;
+    const sb = (o, label, text, off, attr) => `<button type="button" data-steer="${attr || `${o.s},${o.add},${o.pre}`}" data-key="${key}" data-label="${label}" aria-pressed="${isOn(o)}" ${off ? 'disabled' : ''}>${text}</button>`;
+    const hb = hidden ? 'Hold at its max' : `Hold at its max (${top.toFixed(2)})`;
+    const where = stats ? 'in the corpus' : 'in this text';
+    const negText = swiglu ? 'Hold at its minimum' : `Hold at its trough${hidden ? '' : ` (${trough === -0.17 ? '−0.17' : trough.toFixed(2).replace('-', '−')})`}`;
+    const negHelp = swiglu ? `<b>Hold at its minimum</b> sets it to its most negative value in this text${hidden ? '' : ` (${neg.add})`}.` : Number.isFinite(lowIn) ? `<b>Hold at its trough</b> sets it to the most negative value it reaches ${where}: −0.17, GELU's own trough, for a neuron whose input reaches −0.75 (where GELU bottoms out), else what its lowest input gives (this one${hidden ? '' : `: ${trough}`}); its readers never get less from it, and knocking it out is close to the same thing.` : '<b>Hold at its trough</b> sets it to −0.17, the lowest value GELU can give (its input wasn\'t recorded on this model, so its own lowest isn\'t known); knocking it out is close to the same thing.';
+    if (loading) html += '<p class="note">Reading its book: holding it at its max or trough waits for its values there.</p>';
+    html += `<div class="fwd-row" style="margin:6px 0 0;flex-wrap:wrap;gap:4px">${sb({ s: 0, add: 0, pre: 0 }, 'knocked out', 'Knock out')}${sb({ s: 0, add: this.nrnTop.top, pre: 0 }, 'held at its maximum', hb, dead || loading, '0,max,0')}${sb(neg, swiglu ? 'held at its minimum' : 'held at its trough', negText, negOff)}${info(`Steering, at every token; then <b>Rerun</b> (under Playback) runs the same text through the changed model, beside the unchanged run. <b>Hold at its max</b> sets the activation to its strongest ${where} everywhere, so a silent neuron speaks. ${negHelp} Every token at once is far from anything the neuron does naturally: compare with the same change to a random neuron of the same layer before reading much into the result.${dead ? ` This neuron never rises above 0.001 ${where}.` : ''}`)}</div>`;
+    if (cur) html += `<p class="note">${cur.label}${this.ivRun && JSON.stringify(this.ivRun) === JSON.stringify(this.ivSpec()) ? ' · applied' : ' · press Rerun'}</p>`;
+    else if (this.ivRun && this.ivRun.neurons.some(([a, b]) => a === l && b === sel)) html += '<p class="note">Changed in the run on screen (by a graph test) but not among your changes: Rerun puts back your own.</p>';
+    // here: activation, input, gate and value
+    const h = v.h, a0 = act[sel], e = effOf(sel);
+    const pre = h.pre ? h.pre[l * F + sel] : null, preU = h.preU ? h.preU[l * F + sel] : null;
+    let here = `Here: activation <b>${a0.toFixed(3)}</b>${top > 1e-3 ? ` (${(100 * a0 / top).toFixed(0)}% of its max)` : ''}`;
+    if (swiglu && pre != null && preU != null) {
+      const sg = (x) => (x >= 0 ? '+' : '−'), big = Math.abs(a0) > 0.1 * (top || 1);
+      const regime = !big ? '' : pre >= 0 && preU >= 0 ? ' · its main side (gate open, value positive)' : pre >= 0 ? ' · its negative side (gate open, value negative)' : preU < 0 ? ' · <b>double negative</b>: gate and value both negative, so it fires positive for a reason unlike its main one' : ' · a leak through a closed gate';
+      here += ` = SiLU(gate ${pre.toFixed(2)}) × value ${preU.toFixed(2)} (${sg(pre)}×${sg(preU)})${regime}`;
+    } else if (pre != null) here += ` · input ${pre.toFixed(3)}${pre < -2 ? ' (far below zero)' : ''}`;
+    if (e != null) here += ` · effect on ${tw} <b class="${e >= 0 ? 'pos' : 'neg'}">${fmt(e)}</b> (logits)`;
+    html += `<div class="eff" style="margin-top:8px">${hidden ? 'Here: hidden while reading blind' : here}</div>`;
+    if (pos === 0) html += `<p class="note warn">${this.lead ? 'This is the document-start token (⟨doc⟩), where the model parks attention' : 'This is the first token, where the model parks attention'}: values here are often outsized and say little about the neuron${this.lead ? '; the book leaves this position out' : ''}.</p>`;
+    // where it fires in this text: activation, or the input before the activation function
+    const canInput = this.hist.some((hp) => hp && hp.pre);
+    const valOf = (hp) => (!hp ? null : this.showInput && hp.pre ? hp.pre[l * F + sel] : hp.mlp[l * F + sel]);
+    let vmax = this.showInput ? (stats ? Math.abs(stats.minIn) : 1e-6) : Math.max(top, 1e-6);
+    for (let p = 1; p < this.rows.length; p++) { const x = valOf(this.hist[p]); if (x != null) vmax = Math.max(vmax, Math.abs(x)); }
+    html += `<div class="sec">Where it fires ${canInput ? `<button type="button" class="mini" data-inputview>${this.showInput ? 'show activation' : 'show input'}</button>` : ''} ${info(`This neuron's ${this.showInput ? 'input before its activation function, which shows its negative side even where GELU flattens it' : 'activation'} at every token of the text so far: <span class="c">cyan</span> positive, <span class="v">violet</span> negative, as bright as it is against ${stats ? 'its strongest in the corpus' : 'its strongest here'}, so a weak firing looks weak. Neurons often fire not on the word that carries a meaning but next to it: on the word before the thing it predicts, or on punctuation where the model sums up what came before. The outlined token is the one on screen.`)}</div>`;
+    html += hidden ? '<p class="note">Hidden while reading blind.</p>' : `<div class="text">${this.rows.map((r, p) => { if (p < this.lead) return '<span class="doc" title="the start of the document">⟨doc⟩</span>'; const x = valOf(this.hist[p]); return `<span class="${p === pos ? 'here' : ''}" style="background:${x == null ? 'transparent' : shade(x, vmax)}" title="${x == null ? 'not run yet' : x.toFixed(3)}">${esc(this.tokens[r])}</span>`; }).join('')}</div>`;
+    // the book: strongest examples, its other side, its shape
+    if (this.book && !hidden) {
+      const m = this.book.meta, B = m.before, pad = m.pad ?? 65535;
+      const ex = this.expand && this.expand.key === key ? this.expand : null;
+      const exLine = (e, kind, k, scale, unit) => {
+        const toks = Array.from(e.ids, (id, j) => (id === pad ? '' : id === m.eot ? '<span class="doc" title="start of the document">⟨doc⟩</span>' : `<span class="${j === B ? 'here' : ''}" style="background:${shade(e.acts[j], scale)}" title="${unit} ${e.acts[j].toFixed(3)}">${esc(tokOf(id))}</span>`)).join('');
+        const v0 = e.acts[B], open = ex && ex.kind === kind && ex.k === k;
+        let li = `<li><span class="num ${v0 >= 0 ? 'pos' : 'neg'}" title="${unit}">${v0.toFixed(2)}<small>${scale > 1e-3 ? `${(100 * Math.abs(v0) / scale).toFixed(0)}%` : ''}</small></span><span class="text ex">${toks}</span>${e.at !== 0xffffffff ? `<button type="button" class="mini more" data-expand="${kind}:${k}" title="The whole passage up to here, run through the model">${open ? '−' : '↑'}</button>` : ''}</li>`;
+        if (open) li += this.passageHtml(ex, kind === 'negIn', kind === 'negIn' ? Math.abs(stats.minIn) : scale, shade);
+        return li;
+      };
+      const spacing = m.spacing || m.window;
+      html += `<div class="sec">Strongest examples ${info(`The ${m.pos} tokens that drive this neuron hardest out of ${(m.tokens / 1e6).toFixed(1)} million tokens of ${esc(m.corpus.name)} (${esc(m.corpus.license)}), no two within ${spacing} tokens of each other, each with the ${B} tokens before it (⟨doc⟩ marks a document's start). Numbers are its activation, and that as a share of its maximum. Read the whole line, not just the outlined token: the meaning is often in what came before; ↑ runs the whole passage up to it.`)}</div>`;
+      if (!bk.ready) html += '<p class="note">Reading its examples…</p>';
+      else if (bk.err) html += `<p class="note">Couldn't read its examples (${esc(bk.err)}). <button type="button" class="mini" data-retry>Try again</button></p>`;
+      else {
+        const d = bk.d, mx = Math.max(d.max, 1e-6);
+        html += d.max > 1e-3 ? `<ol class="exs">${d.pos.map((x, k) => exLine(x, 'pos', k, mx, 'activation')).join('')}</ol>` : '<p class="note">Never above 0.001 in the corpus: this neuron barely or never fires.</p>';
+        // the strongest few can be a sliver of what it does: early layers run hot in a document's first tokens
+        const early = d.pos.filter((e) => e.at !== 0xffffffff && e.at % m.ctx < 8).length;
+        if (d.max > 1e-3 && early >= Math.ceil(d.pos.length / 2)) html += `<p class="note warn">${early} of these ${d.pos.length} sit in a document's first few tokens, where early layers run hot, while ${d.half.toLocaleString()} tokens reach half its max: they may be a sliver of what it does. ${(this.book.meta.band_first ?? 1) === 0 ? 'Open the top band of its shape below, or test' : 'Test'} it on a case mid-sentence.</p>`;
+        if (swiglu && d.negOut && d.negOut.length) {  // for GELU these would all sit at its -0.17 trough: ties, not a list
+          html += `<div class="sec">Where its output is most negative ${info('The tokens where its activation is most negative: what the neurons that read it receive from its negative side.')}</div>`;
+          html += `<ol class="exs">${d.negOut.map((x, k) => exLine(x, 'negOut', k, Math.max(1e-6, Math.abs(d.negOut[0].acts[B])), 'activation')).join('')}</ol>`;
+        }
+        const im = Math.max(1e-6, Math.abs(d.minIn));
+        html += `<div class="sec">Its other side ${info(swiglu ? 'The tokens with its most negative input: what pushes it hardest the other way.' : 'The tokens with its most negative input before GELU (numbers are that input): the votes against it at their strongest. GELU turns these into almost exactly zero, so its readers get between −0.17 and 0 from this side; the distinction it draws is in what lands here compared with its strongest examples.')}</div>`;
+        html += d.minIn > -0.5 ? '<p class="note">Never pushed far below zero: its input stays above −0.5 everywhere in the corpus.</p>' : d.negIn.length ? `<ol class="exs">${d.negIn.map((x, k) => exLine(x, 'negIn', k, im, 'input')).join('')}</ol>` : '<p class="note">Nothing pushes it strongly negative.</p>';
+        // shape: tokens per halving band of its own maximum, and how often it fires strongly
+        const bins = d.bins, bmax = Math.max(1, ...bins), pages = d.tokens / 400, positive = bins.reduce((s, c) => s + c, 0);
+        const per = d.half ? pages / d.half : Infinity;
+        const freq = !d.half ? 'never reaches half its maximum in the corpus' : per >= 1 ? `reaches half its maximum or more about once every ${per >= 10 ? Math.round(per) : per.toFixed(1)} pages` : `reaches half its maximum or more about ${(1 / per).toFixed(1)} times a page`;
+        const share = d.nonpos != null ? positive / (positive + d.nonpos) : null;
+        html += `<div class="sec">Its shape ${info('How many tokens in the corpus land in each band of this neuron\'s own range, from its maximum (left) down by halves to 1/4096 of it (right), on a log scale; only tokens where it is positive. Where its tokens sit in its own range; open a band to see what the middle of its range responds to. A page is about 400 tokens (the essay counts one token in 100 as a quarter of a page).')}</div>`;
+        const nb = this.book.meta.bands || 0, b0 = this.book.meta.band_first ?? 1, sel_ = this.band && this.band.key === key ? this.band.k : -1;
+        html += `<div class="shape">${bins.map((c, k) => { const t = `${k === bins.length - 1 ? 'at most 1/4096' : k === 0 ? 'above 1/2' : `1/${2 ** (k + 1)} to 1/${2 ** k}`} of its max: ${c.toLocaleString()} tokens`, h = `height:${c ? Math.max(4, (Math.log10(c + 1) / Math.log10(bmax + 1)) * 100) : 0}%`; return k >= b0 && k < b0 + nb && c ? `<button type="button" class="bandbar${k === sel_ ? ' on' : ''}" data-band="${k}" style="${h}" title="${t}: click for a few of them" aria-label="${t}: show a few of them" aria-pressed="${k === sel_}"></button>` : `<i style="${h}" title="${t}"></i>`; }).join('')}</div>`;
+        html += `<p class="note">Max ${d.max.toFixed(2)}${share != null ? ` · positive on ${(100 * share).toFixed(1)}% of tokens` : ''} · ${freq}.${nb ? ` Click a band to see a few random tokens from it${b0 === 0 ? ': the top one shows what it mostly does when it fires hard, the lower ones' : ':'} the middle of its range, where a reading should still hold.` : ''}</p>`;
+        if (sel_ >= b0) html += this.bandSection(l, sel, sel_, d, tokOf, shade);
+      }
+    } else if (this.book && hidden) html += '<p class="note">Reading blind: its examples, shape, neighbours and words appear after your first test below.</p>';
+    // built from, here: each earlier part's exact share of its input at this token
+    if (this.caps.links && !hidden) {
+      const lk = this.lk.get(`${pos}:${l}:${sel}`);
+      if (!lk && !this.asked.has(`lk:${pos}:${l}:${sel}`)) { this.asked.add(`lk:${pos}:${l}:${sel}`); this.worker.postMessage({ type: 'links', run: this.runId, pos, l, j: sel }); }
+      html += `<div class="sec">What feeds it here ${info(`Its input at this token split exactly into one share per earlier part: each earlier neuron (its activation times the weight between them), each attention head (what it moved here from this and earlier tokens), and the token's own embedding; what is left is biases. ${swiglu ? 'A SwiGLU neuron has two inputs, its gate and its value; both are split. ' : ''}Click a neuron to read it.`)}</div>`;
+      if (!lk) html += '<p class="note">Splitting its input…</p>';
+      else if (lk.none) html += `<p class="note">${esc(lk.none)}</p>`;
+      else {
+        const split = (blk, title) => {
+          const parts = [];
+          for (let k = 0; k < blk.neurons.length; k++) if (blk.neurons[k]) parts.push([blk.neurons[k], `n:${Math.floor(k / F)}:${k % F}`]);
+          for (let k = 0; k < blk.heads.length; k++) if (blk.heads[k]) parts.push([blk.heads[k], `h:${Math.floor(k / this.H)}:${k % this.H}`]);
+          parts.push([blk.emb, 'e']);
+          let sum = 0; for (const [x] of parts) sum += x;
+          parts.sort((p, q) => Math.abs(q[0]) - Math.abs(p[0]));
+          const pm = Math.max(1e-6, Math.abs(parts[0][0]));
+          const pRow = ([x, k]) => {
+            const [t, a, b] = k.split(':');
+            const label = t === 'n' ? `<button type="button" class="link" data-goto="${a}:${b}" title="${esc(this.label(+a, +b))}">${this.nname(+a, +b)}</button>` : t === 'h' ? `head L${a}.${b}` : 'embedding';
+            return `<li><span class="lbl">${label}</span>${bar(x, pm)}<span class="num ${x >= 0 ? 'pos' : 'neg'}">${fmt(x)}</span></li>`;
+          };
+          return `${title ? `<p class="note sub">${title}</p>` : ''}<ol class="parts">${parts.slice(0, 8).map(pRow).join('')}</ol><p class="note">Input ${blk.total.toFixed(2)} = these, ${parts.length - 8 > 0 ? `${(parts.length - 8).toLocaleString()} smaller shares` : 'nothing else'}, and ${(blk.total - sum).toFixed(2)} of biases.</p>`;
+        };
+        html += lk.up ? split(lk, 'Its gate') + split(lk.up, 'Its value') : split(lk, '');
+        const live = this.ivRun && this.ivRun.neurons.find(([a, b]) => a === l && b === sel);
+        if (live && live[4]) html += `<p class="note">You steer its input by ${live[4] >= 0 ? '+' : ''}${(+live[4]).toFixed(2)}: the input it acts on is ${(lk.total + live[4]).toFixed(2)}, the split above plus your steer.</p>`;
+        else if (live) html += `<p class="note">${this.ko.neurons.get(key) ? `You have set its activation (${this.ko.neurons.get(key).label})` : 'Its activation is set in the run on screen'}: the split above is the input it would have had; what it writes is the value you set.</p>`;
+      }
+      // read by: later neurons whose input weights line up with its output (weights only)
+      const rd = this.rd.get(`${pos}:${key}`);
+      if (!rd && !this.asked.has(`rd:${pos}:${key}`)) { this.asked.add(`rd:${pos}:${key}`); this.worker.postMessage({ type: 'readers', run: this.runId, pos, l, i: sel }); }
+      if (rd && rd.into) {
+        const list = []; for (let k = 0; k < rd.into.length; k++) if (rd.into[k]) list.push([rd.into[k], Math.floor(k / F), k % F]);
+        list.sort((p, q) => Math.abs(q[0]) - Math.abs(p[0]));
+        if (list.length) {
+          const rm = Math.abs(list[0][0]);
+          html += `<div class="sec">What reads it ${info('Later neurons whose input weights line up most with this one\'s output, either way, per unit of its activation, scaled by each reader\'s normalisation at the token on screen (late layers divide their input by more): where what it writes goes next. A strongly negative reader may be gated by it, this one firing keeping that one quiet; check what feeds that reader at a token to see.')}</div><ol class="parts">${list.slice(0, 6).map(([x, ll, ii]) => `<li><span class="lbl"><button type="button" class="link" data-goto="${ll}:${ii}" title="${esc(this.label(ll, ii))}">${this.nname(ll, ii)}</button></span>${bar(x, rm)}<span class="num ${x >= 0 ? 'pos' : 'neg'}">${fmt(x)}</span></li>`).join('')}</ol>`;
+        }
+      }
+    }
+    // what it writes (the output weights through the final norm and unembedding)
+    if (!hidden) {
+      const nv = this.nvocab.get(key);
+      html += `<div class="sec">What it writes ${info('The words this neuron\'s output weights push <span class="c">up</span> and <span class="a">down</span> most whenever it fires positively (the other way round when negative). Worked out from its weights through the final normalisation and output layer, so it ignores what later layers do with its output. Many neurons write nothing word-like: their job is to feed later neurons.')}</div>`;
       html += nv ? `<div class="words up">${nv.up.map((w) => `<span>${word(w.row)}</span>`).join('')}</div><div class="words down" style="margin-top:6px">${nv.down.map((w) => `<span>${word(w.row)}</span>`).join('')}</div>` : '<p class="note">Reading its output weights…</p>';
-    } else html += '<p class="note" style="margin-top:12px">Pick a neuron to see where it fires across the text and which words it writes toward.</p>';
-    const scroll = el.scrollTop;
-    el.innerHTML = html; el.hidden = false; el.scrollTop = scroll;
+    }
+    // test it: a sentence of the reader's own, on the unchanged model
+    if (this.caps.pre) {
+      html += `<div class="sec">Test it ${info(`A test only counts if your reading came first: write it in the note above, then a sentence meant to fire this neuron as hard as possible, ideally with <b>Read blind</b> on. Copying an example proves nothing. If your reading is right, the sentence should come near its strongest activation${stats ? ` in the corpus${hidden ? '' : ` (${stats.max.toFixed(2)})`}` : ''}, or beat it; also try one that should <i>not</i> fire it, a near miss. The test runs on the unchanged model, whatever is steered.`)}</div>`;
+      html += `<div class="fwd-row probe"><input id="nrnProbe" type="text" placeholder="A sentence you think will fire it" value="${pr ? esc(pr.text) : ''}" aria-label="A test sentence"><button type="button" data-probe>Test</button></div>`;
+      if (pr && !pr.result) html += '<p class="note">Running…</p>';
+      else if (pr && pr.result) {
+        const r = pr.result; let best = -Infinity; for (const x of r.acts) best = Math.max(best, x);
+        const sc = hidden ? Math.max(best, 1e-6) : Math.max(top, best, 1e-6);  // shading against the max would give it away
+        html += `<div class="text">${r.rows.map((rw, p) => `<span style="background:${shade(r.acts[p], sc)}" title="${r.acts[p].toFixed(3)}${r.preUs[p] != null ? ` · gate ${r.pres[p].toFixed(2)} × value ${r.preUs[p].toFixed(2)}` : ` · input ${r.pres[p].toFixed(2)}`}">${esc(this.tokens[rw])}</span>`).join('')}</div>`;
+        html += hidden ? `<p class="note">Strongest here ${best.toFixed(2)}. Write your reading in the note first, then test again: a test only reveals the neuron, and how close you came to its strongest, if the reading came first.</p>` : `<p class="note">Strongest here ${best.toFixed(2)}${stats && stats.max > 1e-3 ? ` · ${(100 * best / stats.max).toFixed(0)}% of its strongest in ${(stats.tokens / 1e6).toFixed(1)}M corpus tokens${best > stats.max ? ' · beats every corpus example' : ''}` : ''}.</p>`;
+      }
+    }
+    html += `<p class="note" style="margin-top:10px">Reading it: what one distinction does it draw between its two sides? Try to say it without listing nouns. <a href="real.html#ch-neurons" data-explain>How to read a neuron</a></p>`;
+    return html;
   }
 
   // ---------- the field ----------
@@ -796,8 +1351,8 @@ export class ForwardView {
     const rh = this.ref && this.ref.hist[pos], D = rh && h.diff;
     // Where the two runs part ways: the first depth reaching a quarter of the largest difference.
     const dMax = D ? Math.max(...D) : 0, partsAt = D && dMax > 0.005 ? D.findIndex((x) => x >= Math.max(0.005, dMax * 0.25)) : -1;
-    if (rh && !h.diff && this.worker && !this.asked.has(`diff:${pos}`)) { this.asked.add(`diff:${pos}`); this.worker.postMessage({ type: 'diff', pos }); }
-    hd.textContent = this.hudText ? this.hudText(v) : `token ${pos + 1} · ${beat <= this.L ? (beat === 0 ? 'embedding' : `layer ${beat - 1}`) : 'readout'}`
+    if (rh && !h.diff && this.worker && !this.asked.has(`diff:${pos}`)) { this.asked.add(`diff:${pos}`); this.worker.postMessage({ type: 'diff', run: this.runId, pos }); }
+    hd.textContent = this.hudText ? this.hudText(v) : `${this.tokName(pos)} · ${beat <= this.L ? (beat === 0 ? 'embedding' : `layer ${beat - 1}`) : 'readout'}`
       + (A ? ` · why “${this.disp(this.tokens[tgt]).trim() || this.disp(this.tokens[tgt])}”${this.pick && this.pick.pos === pos ? ' (picked)' : ''}` : '')
       + (h.watch && this.ref ? ` · ${this.ref.kind === 'pin' ? 'A\'s' : 'unchanged'} next “${this.disp(this.tokens[h.watch.row])}” ${this.ref.p0[pos] != null ? `${(this.ref.p0[pos] * 100).toFixed(1)}% → ` : 'now '}${(h.watch.p * 100).toFixed(1)}%` : '')
       + (partsAt >= 0 ? ` · parts ways from A at ${partsAt === 0 ? 'the embedding' : `layer ${partsAt - 1}`}` : '') + hsNote;
@@ -932,7 +1487,7 @@ export class ForwardView {
     const word = (r) => this.disp(this.tokens[r]);
     if (this.worker && !this.playing) for (let dp = 0; dp <= L; dp++) {  // fill in the depths a big vocabulary skipped
       const k = `lens:${pos}:${dp}`;
-      if (!h.lens[dp] && !this.asked.has(k)) { this.asked.add(k); this.worker.postMessage({ type: 'lens', pos, depth: dp }); }
+      if (!h.lens[dp] && !this.asked.has(k)) { this.asked.add(k); this.worker.postMessage({ type: 'lens', run: this.runId, pos, depth: dp }); }
     }
     const live = pos === this.rows.length - 1 && this.viewPos < 0, cur = Math.min(beat, L), last = live ? cur : L;
     const avail = []; for (let dp = 0; dp <= last; dp++) if (h.lens[dp]) avail.push(dp);
@@ -946,8 +1501,8 @@ export class ForwardView {
     const every = Math.max(1, Math.ceil((L + 1) / Math.max(1, (x1 - x0) / (30 * d))));
     for (let dp = 0; dp <= L; dp += every) { c.fillStyle = dp === cur && live ? '#35e0e6' : '#66637e'; c.fillText(dp === 0 ? 'EMB' : `L${dp - 1}`, xOf(dp), yR1 + 10 * d); }
     c.textAlign = 'left';
-    c.fillText(`LOGIT LENS OVER DEPTH · “${word(this.rows[pos])}” (token ${pos + 1})`, pad, pad / 2 + 4 * d);
-    if (!avail.length) { this.viewHud = `token ${pos + 1} · reading the logit lens…`; return; }
+    c.fillText(`LOGIT LENS OVER DEPTH · “${word(this.rows[pos])}” (${this.tokName(pos)})`, pad, pad / 2 + 4 * d);
+    if (!avail.length) { this.viewHud = `${this.tokName(pos)} · reading the logit lens…`; return; }
     // The words: the eight that ever do best get a colour; the rest of each top ten is grey.
     const best = new Map();
     for (const dp of avail) h.lens[dp].rows.forEach((r, j) => best.set(r, Math.max(best.get(r) || 0, h.lens[dp].probs[j])));
@@ -1020,7 +1575,7 @@ export class ForwardView {
     let settle = avail[avail.length - 1];
     for (let k = avail.length - 1; k >= 0 && h.lens[avail[k]].rows[0] === top; k--) settle = avail[k];
     const firstSeen = avail.find((dp) => h.lens[dp].rows.includes(top));
-    this.viewHud = `token ${pos + 1} · ${live && cur < L ? `at layer ${cur - 1} it leads with` : 'settles on'} “${word(top)}”${!(live && cur < L) ? ` from ${settle === 0 ? 'the embedding' : `layer ${settle - 1}`} on` : ''}${firstSeen != null && firstSeen < settle ? `, in its top ten from ${firstSeen === 0 ? 'the embedding' : `layer ${firstSeen - 1}`}` : ''}`;
+    this.viewHud = `${this.tokName(pos)} · ${live && cur < L ? `at layer ${cur - 1} it leads with` : 'settles on'} “${word(top)}”${!(live && cur < L) ? ` from ${settle === 0 ? 'the embedding' : `layer ${settle - 1}`} on` : ''}${firstSeen != null && firstSeen < settle ? `, in its top ten from ${firstSeen === 0 ? 'the embedding' : `layer ${firstSeen - 1}`}` : ''}`;
   }
 
   // ---------- the flow: where each token's information came from ----------
@@ -1171,8 +1726,8 @@ export class ForwardView {
     if (R) {
       const z = pos > 0 ? Math.max(1e-6, 1 - R[0][0]) : 1, pct = (w) => `${((w / z) * 100).toFixed(0)}%`;
       const src = Array.from(R[0]).map((w, k) => [w, k]).filter(([, k]) => k !== pos && k > 0).sort((p1, p2) => p2[0] - p1[0]).slice(0, 3);
-      this.viewHud = `token ${pos + 1} “${word(this.rows[pos])}” · draws on itself ${pct(R[0][pos])}${src.length ? `, ${src.map(([w, k]) => `“${word(this.rows[k])}” ${pct(w)}`).join(', ')}` : ''}${pos > 0 ? ` · ${(R[0][0] * 100).toFixed(0)}% rests on the first token` : ''}`;
-    } else this.viewHud = `token ${pos + 1} “${word(this.rows[pos])}” · ${this.flowCache.segs.toLocaleString()} links`;
+      this.viewHud = `${this.tokName(pos)} “${word(this.rows[pos])}” · draws on itself ${pct(R[0][pos])}${src.length ? `, ${src.map(([w, k]) => `“${word(this.rows[k])}” ${pct(w)}`).join(', ')}` : ''}${pos > 0 ? ` · ${(R[0][0] * 100).toFixed(0)}% rests on ${this.lead ? '⟨doc⟩' : 'the first token'}` : ''}`;
+    } else this.viewHud = `${this.tokName(pos)} “${word(this.rows[pos])}” · ${this.flowCache.segs.toLocaleString()} links`;
   }
 
   drawLoupe(f, h, n, A) {

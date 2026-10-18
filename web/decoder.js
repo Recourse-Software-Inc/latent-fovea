@@ -30,6 +30,7 @@ export class Decoder {
     if (rc === 2) throw new Error('This model is built in a way this tool can\'t run yet.');
     if (rc !== 0) throw new Error('Not enough memory to run this model in the browser.');
     this.m = manifest; this.L = cfg.L; this.H = cfg.NH; this.C = cfg.C; this.F = cfg.F; this.V = cfg.V;
+    this.swiglu = cfg.MLP === 2; this.act = ['gelu_tanh', 'gelu_erf', 'swiglu'][cfg.MLP] || 'gelu_tanh';
     this.maxT = ex.max_t();
     const stageN = ex.stage_halves();
     const feed = (which, buf) => {
@@ -109,14 +110,14 @@ export class Decoder {
   valueNorms(pos) { const ex = this.ex; if (!ex.vnorm) return null; const o = new Float32Array(this.L * this.H); for (let l = 0; l < this.L; l++) for (let h = 0; h < this.H; h++) o[l * this.H + h] = ex.vnorm(l, pos, h); return o; }
 
   // Interventions, applied from the next step on: { heads: [[l, h, scale]], mlps: [[l, scale]],
-  // neurons: [[l, i, scale]] }; scale 0 knocks a part out. An empty spec restores the model.
+  // neurons: [[l, i, scale, add, pre]] }; scale 0 knocks a part out, add steers a neuron's activation, pre its input. An empty spec restores the model.
   setInterventions(spec = {}) {
     const ex = this.ex;
     if (!ex.iv_clear) return false;
     ex.iv_clear();
     for (const [l, h, s] of spec.heads || []) ex.iv_head(l, h, s);
     for (const [l, s] of spec.mlps || []) ex.iv_mlp(l, s);
-    for (const [l, i, s] of spec.neurons || []) ex.iv_neuron(l, i, s);
+    for (const [l, i, s, add = 0, pre = 0] of spec.neurons || []) { if (pre && ex.iv_neuron3) ex.iv_neuron3(l, i, s, add, pre); else if (add && ex.iv_neuron2) ex.iv_neuron2(l, i, s, add); else ex.iv_neuron(l, i, s); }
     return true;
   }
   // After the final logit lens of a step: the probability of word `row` (a tile row).
@@ -167,4 +168,33 @@ export class Decoder {
     const pick = (a, b) => Array.from({ length: b - a }, (_, j) => ({ row: r[a + j], score: p[a + j] }));
     return { up: pick(0, K), down: pick(K, 2 * K) };
   }
+
+  // Each neuron's input before its activation function at the last step (SwiGLU: the gate's), and
+  // SwiGLU's value input; null when the kernel doesn't record them.
+  pre() { return this.ex.ptr_pre ? new Float32Array(this.ex.memory.buffer, (this.ex.ptr_pre() >>> 0), this.L * this.F) : null; }
+  preU() { return this.ex.ptr_preu && this.swiglu ? new Float32Array(this.ex.memory.buffer, (this.ex.ptr_preu() >>> 0), this.L * this.F) : null; }
+  // Into neuron j of layer l (see neuron_links in the kernel). dyn: each part's exact share of its
+  // input at the last step; else weights only. { neurons [L*F], heads [L*H], emb, total, r, up }
+  // where up is the same split of a SwiGLU neuron's value input. null when unavailable.
+  links(l, j, dyn = true) {
+    const ex = this.ex, L = this.L, H = this.H, F = this.F;
+    if (!ex.neuron_links || ex.neuron_links(l, j, dyn ? 1 : 0) !== 0) return null;
+    const B = L * F + L * H + 1, nl = new Float32Array(ex.memory.buffer, (ex.ptr_nl() >>> 0), 2 * B + 4).slice();
+    const block = (o, total) => ({ neurons: nl.subarray(o, o + L * F), heads: nl.subarray(o + L * F, o + L * F + L * H), emb: nl[o + L * F + L * H], total });
+    const out = block(0, nl[2 * B]);
+    out.r = nl[2 * B + 2];
+    out.up = this.swiglu ? block(B, nl[2 * B + 1]) : null;
+    return out;
+  }
+  // Out of neuron i of layer l: each later neuron's read of it, per unit activation, from the
+  // weights. { into [L*F] (GELU input, or SwiGLU gate), intoUp [L*F] or null }.
+  readers(l, i) {
+    const ex = this.ex, L = this.L, F = this.F;
+    if (!ex.neuron_readers || ex.neuron_readers(l, i) !== 0) return null;
+    const B = L * F + this.H * L + 1, nl = new Float32Array(ex.memory.buffer, (ex.ptr_nl() >>> 0), 2 * B + 4).slice();
+    return { into: nl.subarray(0, L * F), intoUp: this.swiglu ? nl.subarray(B, B + L * F) : null };
+  }
+
+  // Each MLP norm's 1/scale at the last step (null on an older kernel).
+  ln2r() { return this.ex.ptr_ln2r ? new Float32Array(this.ex.memory.buffer, (this.ex.ptr_ln2r() >>> 0), this.L) : null; }
 }

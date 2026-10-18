@@ -82,6 +82,9 @@ static float *KC, *VC;         // [L][MAXT][C]
 static float *ATT;             // [L][NH][MAXT][MAXT] probabilities (row = query)
 static float HEADN[LMAX * NH];    // |head output after projection| for the last token
 static float *MLP;             // [L][F] GELU activations, last token
+static float *PRE;             // [L][F] each neuron's input to GELU, last token (any input steer included)
+static float LN2R[LMAX];          // 1/scale of each MLP's LayerNorm, last token
+static float *NL;              // neuron_links / neuron_readers output (see there)
 static float RES[(LMAX + 1) * C]; // residual stream after embed and each block, last token
 static float LENS_P[(LMAX + 2) * TOPK];  // one slot per depth, plus LMAX + 1 for lens_q
 static u32 LENS_I[(LMAX + 2) * TOPK];
@@ -101,12 +104,17 @@ static float DIRV[C];             // scratch: a neuron's output direction throug
 // the forward pass, so every later layer (and the context kept for later tokens) sees the changed
 // model. 0 knocks a part out; 1 leaves it alone. Recordings show the changed values.
 #define NKO_MAX 256
-static float HSCALE[LMAX * NH], MSCALE[LMAX], NKO_S[NKO_MAX];
+static float HSCALE[LMAX * NH], MSCALE[LMAX], NKO_S[NKO_MAX], NKO_A[NKO_MAX], NKO_P[NKO_MAX];
 static u32 NKO_L[NKO_MAX], NKO_I[NKO_MAX], nko;
 EXPORT void iv_clear(void) { for (u32 j = 0; j < LMAX * NH; j++) HSCALE[j] = 1; for (u32 l = 0; l < LMAX; l++) MSCALE[l] = 1; nko = 0; }
 EXPORT void iv_head(u32 l, u32 h, float s) { if (l < LMAX && h < NH) HSCALE[l * NH + h] = s; }
 EXPORT void iv_mlp(u32 l, float s) { if (l < LMAX) MSCALE[l] = s; }
-EXPORT u32 iv_neuron(u32 l, u32 i, float s) { if (nko >= NKO_MAX || i >= F) return 1; NKO_L[nko] = l; NKO_I[nko] = i; NKO_S[nko] = s; nko++; return 0; }
+EXPORT u32 iv_neuron(u32 l, u32 i, float s) { if (nko >= NKO_MAX || i >= F) return 1; NKO_L[nko] = l; NKO_I[nko] = i; NKO_S[nko] = s; NKO_A[nko] = 0; NKO_P[nko] = 0; nko++; return 0; }
+// Steering: activation -> activation * s + add, at every position (add turns a silent neuron on).
+EXPORT u32 iv_neuron2(u32 l, u32 i, float s, float add) { if (iv_neuron(l, i, s)) return 1; NKO_A[nko - 1] = add; return 0; }
+// Steering the input instead: input -> input + pre before GELU, so the neuron is pushed the way
+// the network itself pushes it (GELU's output can't go below -0.17).
+EXPORT u32 iv_neuron3(u32 l, u32 i, float s, float add, float pre) { if (iv_neuron2(l, i, s, add)) return 1; NKO_P[nko - 1] = pre; return 0; }
 static float UMEAN[C];            // the average word's unembedding row (computed on first use)
 static u32 umean_ready;
 static float x[C], xn[C], qkv[3 * C], y[C], hbuf[F], tmp[C];
@@ -122,7 +130,8 @@ EXPORT u32 init(u32 vocab, u32 nctx, u32 nlayer) {
   WTE = alloc(V * C * 4);
   KC = alloc(L * MAXT * C * 4); VC = alloc(L * MAXT * C * 4);
   ATT = alloc(L * NH * MAXT * MAXT * 4);
-  MLP = alloc(L * F * 4); LOGITS = alloc(V * 4);
+  MLP = alloc(L * F * 4); PRE = alloc(L * F * 4); LOGITS = alloc(V * 4);
+  NL = alloc((L * F + L * NH + 4) * 4);
   stageCap = 8u << 20; stage = alloc(stageCap * 2);
   return stage ? 0 : 1;
 }
@@ -132,6 +141,9 @@ EXPORT u16 *ptr_stage(void) { return stage; }
 EXPORT float *ptr_att(void) { return ATT; }
 EXPORT float *ptr_headn(void) { return HEADN; }
 EXPORT float *ptr_mlp(void) { return MLP; }
+EXPORT float *ptr_pre(void) { return PRE; }
+EXPORT float *ptr_ln2r(void) { return LN2R; }
+EXPORT float *ptr_nl(void) { return NL; }
 EXPORT float *ptr_res(void) { return RES; }
 EXPORT float *ptr_mout(void) { return MOUT; }
 // The size of what token pos offers to head h at layer l: the norm of its value vector.
@@ -171,13 +183,14 @@ EXPORT u32 load(u32 which, u32 offset, u32 n) {
 }
 
 // ---------- blocks ----------
-static void layernorm(const float *in, const float *w, const float *b, float *out) {
+static float layernorm(const float *in, const float *w, const float *b, float *out) {  // returns 1/scale
   float m = 0, v = 0;
   for (int i = 0; i < C; i++) m += in[i];
   m /= C;
   for (int i = 0; i < C; i++) { float d = in[i] - m; v += d * d; }
   float r = 1.0f / fsqrt(v / C + 1e-5f);
   for (int i = 0; i < C; i++) out[i] = (in[i] - m) * r * w[i] + b[i];
+  return r;
 }
 // out[o] = b[o] + sum_i in[i] * W[i*O + o]   (Conv1D layout: [in][out])
 static void matvec(const float *in, const float *W, const float *b, float *out, int I, int O) {
@@ -277,11 +290,12 @@ EXPORT u32 step(u32 row, u32 pos, u32 lensMode) {
     }
     for (int i = 0; i < C; i++) x[i] += tmp[i] + projb[i];
 
-    layernorm(x, ln2w, ln2b, xn);
+    LN2R[l] = layernorm(x, ln2w, ln2b, xn);
     matvec(xn, fcw, fcb, hbuf, C, F);
-    float *act = MLP + (u32)l * F;
-    for (int i = 0; i < F; i++) hbuf[i] = gelu(hbuf[i]);
-    for (u32 j = 0; j < nko; j++) if (NKO_L[j] == l) hbuf[NKO_I[j]] *= NKO_S[j];
+    float *act = MLP + (u32)l * F, *pre = PRE + (u32)l * F;
+    for (u32 j = 0; j < nko; j++) if (NKO_L[j] == l) hbuf[NKO_I[j]] += NKO_P[j];
+    for (int i = 0; i < F; i++) { pre[i] = hbuf[i]; hbuf[i] = gelu(hbuf[i]); }
+    for (u32 j = 0; j < nko; j++) if (NKO_L[j] == l) hbuf[NKO_I[j]] = hbuf[NKO_I[j]] * NKO_S[j] + NKO_A[j];
     for (int i = 0; i < F; i++) act[i] = hbuf[i];
     matvec(hbuf, fc2w, fc2b, tmp, F, C);
     if (MSCALE[l] != 1.0f) for (int i = 0; i < C; i++) tmp[i] *= MSCALE[l];
@@ -399,3 +413,63 @@ static u32 rank_dirv(void) {  // top and bottom TOPK words along DIRV
 }
 EXPORT float *ptr_nv_p(void) { return NV_P; }
 EXPORT u32 *ptr_nv_i(void) { return NV_I; }
+
+// ---------- neuron to neuron ----------
+// A neuron's input is its LayerNorm'd residual stream dotted with its input weights, plus a bias.
+// The residual stream is a sum of parts (the embedding, every earlier head and neuron, biases), and
+// LayerNorm at a fixed scale is linear in each part once that part is centred, so the input splits
+// exactly into one term per part:   input_j = sum over parts of r * (c - mean c) . (gamma * w_j) + rest
+// with r the norm's 1/scale at this token.
+static float G[C];
+static float set_g(u32 l, u32 j) {  // G = gamma2 * neuron j's input weights; returns sum(G)
+  const float *w = LW[l], *ln2w = w + C + C + C * 3 * C + 3 * C + C * C + C, *fcw = ln2w + C + C;
+  float sg = 0;
+  for (int c = 0; c < C; c++) { G[c] = ln2w[c] * fcw[(u32)c * F + j]; sg += G[c]; }
+  return sg;
+}
+static float dotg(const float *c, float sg) { float s = 0, m = 0; for (int i = 0; i < C; i++) { s += G[i] * c[i]; m += c[i]; } return s - sg * m / C; }
+
+// Into neuron j of layer l. NL holds, in order: L x F neurons, L x NH heads, the embedding, the
+// neuron's whole input, r. dyn = 1: each part's exact share of the input at the most recent
+// position (earlier neurons as activation x weight); the input minus their sum is the biases.
+// dyn = 0: weights only, per unit of each earlier neuron's activation, before r (heads and the
+// embedding are then 0, since they have no fixed output).
+EXPORT u32 neuron_links(u32 l, u32 j, u32 dyn) {
+  if (l >= L || j >= F) return 1;
+  float sg = set_g(l, j), r = dyn ? LN2R[l] : 1.0f;
+  for (u32 k = 0; k < L; k++) {
+    float *out = NL + k * F;
+    if (k >= l) { for (int i = 0; i < F; i++) out[i] = 0; continue; }
+    const float *w2 = LW[k] + FC2_OFF, *a = MLP + k * F;
+    for (int i = 0; i < F; i++) { float v = dotg(w2 + (u32)i * C, sg); out[i] = dyn ? v * a[i] * r * MSCALE[k] : v; }  // a knocked-out MLP (MSCALE 0) writes nothing
+  }
+  float *hd = NL + L * F;
+  for (u32 hl = 0; hl < L; hl++) for (int h = 0; h < NH; h++)
+    hd[hl * NH + h] = dyn && hl <= l ? r * dotg(HOUT + (hl * NH + h) * C, sg) : 0;
+  float *t = hd + L * NH;
+  float steer = 0;  // an input steer on this neuron is the reader's own change, not a bias: leave it out
+  for (u32 q = 0; q < nko; q++) if (NKO_L[q] == l && NKO_I[q] == j) steer += NKO_P[q];
+  t[0] = dyn ? r * dotg(RES, sg) : 0; t[1] = dyn ? PRE[l * F + j] - steer : 0; t[2] = r; t[3] = 0;
+  return 0;
+}
+// Out of neuron i of layer l: how strongly each later neuron reads its output, per unit of its
+// activation, from the weights alone (before each reader's r). NL holds L x F (0 for layers <= l).
+EXPORT u32 neuron_readers(u32 l, u32 i) {
+  if (l >= L || i >= F) return 1;
+  const float *wo = LW[l] + FC2_OFF + i * C;
+  float m = 0;
+  for (int c = 0; c < C; c++) m += wo[c];
+  m /= C;
+  for (u32 k = 0; k < L; k++) {
+    float *out = NL + k * F;
+    for (int jj = 0; jj < F; jj++) out[jj] = 0;
+    if (k <= l) continue;
+    const float *w = LW[k], *ln2w = w + C + C + C * 3 * C + 3 * C + C * C + C, *fcw = ln2w + C + C;
+    for (int c = 0; c < C; c++) {
+      float a = (wo[c] - m) * ln2w[c];
+      const float *row = fcw + (u32)c * F;
+      for (int jj = 0; jj < F; jj++) out[jj] += a * row[jj];
+    }
+  }
+  return 0;
+}

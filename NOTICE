@@ -78,6 +78,14 @@ Models and data
   - Jina-CLIP-v2: Jina AI, CC BY-NC 4.0. It produced the vectors of the
     KnowDrive store data set.
 
+FineWeb-Edu
+  https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu
+  Hugging Face, Open Data Commons Attribution License (ODC-By) 1.0. The neuron
+  books on the data branch (<model>/neurons/) hold a sample of it as token ids:
+  about three million tokens from 4,829 documents (corpus.u16, used to show
+  each example's whole passage), and each neuron's strongest examples. Built
+  by tools/build_neuron_examples.py.
+
 Fonts
   Plus Jakarta Sans (Copyright 2020 The Plus Jakarta Sans Project Authors) and
   JetBrains Mono (Copyright 2020 The JetBrains Mono Project Authors), SIL Open

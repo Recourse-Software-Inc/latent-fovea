@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Recourse Software Inc.
 // Sparse autoencoders (SAEs): a learned dictionary that rewrites one residual-stream vector as a
-// sparse sum of "features", directions that tend to mean one thing each, unlike single neurons.
+// sparse sum of "features": a second model of the model, useful for asking what is in one state.
 // The weights stream from Hugging Face the first time a layer is opened (by HTTP Range, like a
 // model) and are kept in this browser's storage at 16 bits; the encoding runs in the worker.
 //   encode:  f = ReLU((x - b_dec) W_enc + b_enc)      rebuild:  x' = f W_dec + b_dec

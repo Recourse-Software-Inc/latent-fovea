@@ -90,7 +90,7 @@ for m in reg["models"]:
         if f in ("meta.json", "tokens.json", "vectors.f16") or f.startswith("vectors.") or os.path.isdir(p):
             continue
         put(p, f)
-    for sub in ("model", "kd"):  # the forward model's weights; a KnowDrive store's table and queries
+    for sub in ("model", "kd", "neurons"):  # the forward model's weights; a KnowDrive store's table and queries; the neuron book
         if os.path.isdir(os.path.join(src, sub)):
             os.makedirs(os.path.join(dst, sub), exist_ok=True)
             for f in os.listdir(os.path.join(src, sub)):

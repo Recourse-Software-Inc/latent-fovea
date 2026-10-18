@@ -4,6 +4,15 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- Reading a neuron the way the network reads it (handbook Chapter 11, after Nick Cammarata's *Neural Networks Are Already Clean*): for every GPT-2 and DistilGPT2 neuron, its strongest examples, where its input is most negative (its other side), and its activation shape with random samples from its top band and the middle of its range, over three million FineWeb-Edu tokens read document by document, with each example's whole passage on demand; the input before the activation function, and SwiGLU's gate, value and sign regimes; what feeds a neuron at a token (an exact split of its input) and what reads it; steering kept inside the network's own range; a blind test box; names and notes per neuron, a back/forward trail, export, and a shareable address.
+- Neuron graphs: the model's own neurons behind a word, traced back layer by layer, with group knockouts and two controls (random and most active neurons of the same layers).
+- Kernels record each neuron's input (and SwiGLU's value), take an additive steer (`iv_neuron2`), and split a neuron's input (`neuron_links`, `neuron_readers`).
+
+### Changed
+- GPT-2 and DistilGPT2 runs start after `<|endoftext|>` (a ⟨doc⟩ chip), as the model saw documents in training, so values match the neuron book and Test.
+- Handbook §11.2 treats SAE features as a second step after the neurons, not a cleaner replacement for them.
+
 ## [0.1.1] - 2026-10-16
 
 ### Added

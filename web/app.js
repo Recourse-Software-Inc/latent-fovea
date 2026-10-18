@@ -2,7 +2,7 @@
 // Copyright 2026 Recourse Software Inc.
 // Latent Fovea viewer. Draws what the wasm kernel decides; streams what it asks for.
 if (/[?&]stats\b/.test(location.search)) document.body.classList.add('stats');  // show the technical readouts
-import { ForwardView } from './field.js';
+import { ForwardView, SHARED_KEYS } from './field.js';
 import { DiffusionView } from './diffusion.js';
 import { KdStore } from './kdquery.js';
 import { ExpertView } from './expertview.js';
@@ -22,7 +22,7 @@ addEventListener('hashchange', () => { if (location.hash.slice(1).split('~')[0].
 // point the viewer at another host's files or inject markup through the name.
 const dataParam = params.get('data');
 let DATA = dataParam && /^[\w.\/-]+$/.test(dataParam) && !dataParam.includes('..') && !dataParam.startsWith('/') ? dataParam.replace(/\/?$/, '/') : null;
-let registry = null, modelId = null, browser = null;
+let registry = null, modelId = null, browser = null, missingModel = null;
 // '#hf:<owner>/<repo>' loads a model straight from Hugging Face: converted in the browser
 // on first use (build-worker.js), then served from the browser's own storage.
 const hfRepo = hashModel.startsWith('hf:') ? hashModel.slice(3) : null;
@@ -60,13 +60,16 @@ async function pickData() {
   const entry = local.find((m) => m.id === hashModel) || local.find((m) => m.id === saved) || local.find((m) => m.id === registry.default) || local[0];
   modelId = entry ? entry.id : 'gpt2';
   DATA = 'data/' + (entry ? entry.path : 'gpt2/');
+  if (hashModel && !local.some((m) => m.id === hashModel)) missingModel = hashModel;  // a link made on a model this site doesn't have
 }
 async function buildPicker() {
   const btn = $('modelPick'), list = (registry?.models || []).slice();
   const current = list.find((m) => m.id === modelId);
   $('modelPickName').textContent = current ? current.name : `${meta.model.name}${hfRepo ? ' · Hugging Face' : ''}`;
   btn.title = 'Choose a model: built in, downloaded, or from Hugging Face';
-  const openRepo = (repo) => { location.hash = 'hf:' + repo + (state.mode === 'embed' ? '~embeddings' : ''); location.reload(); };
+  // a shared address (?ask=…&n=…) belongs to the model it was made on: drop it when switching
+  const dropShared = () => { try { const u = new URL(location.href); for (const k of SHARED_KEYS) u.searchParams.delete(k); history.replaceState(null, '', u); } catch {} };
+  const openRepo = (repo) => { dropShared(); location.hash = 'hf:' + repo + (state.mode === 'embed' ? '~embeddings' : ''); location.reload(); };
   const link = $('modelLink');
   const onPick = (id) => {
     const m = list.find((x) => x.id === id); if (!m) return;
@@ -76,6 +79,7 @@ async function buildPicker() {
     }
     link.hidden = true;
     try { localStorage.setItem('lf-model', id); } catch {}
+    dropShared();
     location.hash = id + (state.mode === 'embed' ? '~embeddings' : '');
     location.reload();
   };
@@ -207,6 +211,18 @@ async function boot() {
   state.gaze = { x: W / 2, y: H / 2 };
   $('loading').hidden = true;
   setMode(hashMode === 'embeddings' || !meta.forward ? 'embed' : 'forward');
+  // A shared address (?ask=…, with the token, neuron and graph to reopen; see ForwardView.syncUrl)
+  const ask = params.get('ask');
+  if (ask && meta.forward && fwd && state.mode === 'forward') {
+    const gen = +params.get('gen'), dec = params.get('dec');  // how much it wrote, and how
+    if (Number.isInteger(gen) && gen >= 1 && gen <= 1024 && params.has('gen')) $('fwdCount').value = gen;  // Play more can go past the box's 200
+    if (dec === 'sample' || dec === 'greedy') $('fwdSample').value = dec;
+    $('q').value = ask;
+    if (missingModel) {  // its token, neuron and changes belong to that model: run only the text
+      fwd.notice = `this link was made on “${missingModel}”, which isn't here, so only its text is run, on ${meta.model.name}`;
+      fwd.submit(ask);
+    } else fwd.submit(ask, { shared: true });
+  }
   requestAnimationFrame(tick);
   initLayouts().catch((e) => { console.warn('layouts', e); });
 }
@@ -849,7 +865,7 @@ function tick(now) {
 
 // ---------------- overlay ----------------
 const ov = $('ov').getContext('2d');
-const disp = (s) => s.replace(/^ /, '␣').replace(/\n/g, '↵').replace(/\t/g, '⇥')
+const disp = (s) => s === '<|endoftext|>' ? '⟨doc⟩' : s.replace(/^ /, '␣').replace(/\n/g, '↵').replace(/\t/g, '⇥')
   .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\ufffd]/g, (c) => c === '\ufffd' ? '\ufffd' : `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
 const deg = (px) => (Math.atan(((px / dpr) * 25.4 / 96) / 600) * 180 / Math.PI).toFixed(1);
 function drawOverlay(r0, r1, nf) {
@@ -1153,6 +1169,7 @@ function setMode(mode) {
   const View = meta.model.family === 'masked-diffusion' ? DiffusionView : ForwardView;
   if (!fwd && View === DiffusionView) { $('fwdCount').value = 32; $('fwdSample').value = 'sample'; }
   if (!fwd) fwd = new View({ $, DATA, tokens, points, cats, dpr, project, disp, flyToPoint, pointer: () => (performance.now() - state.lastInput < 5000 ? state.gaze : null), arch: meta.model.arch || 'gpt2', repo: hfRepo, family: meta.model.family,
+    modelHash: DATA && params.get('data') ? null : hfRepo ? 'hf:' + hfRepo : modelId,
     modelName: meta.model.name.replace(/\s*\(.*\)$/, ''), modelMB: Math.round((meta.forward_bytes || 250e6) / 1e6) });
   if (mode === 'forward') { fwd.enter(); if (!fwd.running) setTimeout(() => $('q').focus(), 50); } else fwd.exit();
 }

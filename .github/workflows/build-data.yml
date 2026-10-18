@@ -38,11 +38,12 @@ jobs:
           PROJECTION: ${{ inputs.projection }}
         run: |
           for m in $(echo "$MODELS" | tr ',' ' '); do
-            # keep the folder's LICENSE and NOTICE (the model's licence and what was changed) across a rebuild
-            mkdir -p "keep/$m"; cp "out/$m/LICENSE" "out/$m/NOTICE" "keep/$m/" 2>/dev/null || true
+            # keep the folder's LICENSE, NOTICE and neuron book (built separately) across a rebuild
+            mkdir -p "keep/$m"; cp -r "out/$m/LICENSE" "out/$m/NOTICE" "out/$m/neurons" "keep/$m/" 2>/dev/null || true
             rm -rf "out/$m"
             python tools/build_data.py --model "$m" --projection "$PROJECTION" --out "out/$m" --weights
-            cp "keep/$m/"* "out/$m/" 2>/dev/null || true
+            cp -r "keep/$m/"* "out/$m/" 2>/dev/null || true
+            if [ -f "out/$m/neurons/meta.json" ]; then python -c "import json,sys; p=sys.argv[1]; m=json.load(open(p)); m['neuron_book']='neurons/meta.json'; json.dump(m,open(p,'w'),indent=2)" "out/$m/meta.json"; fi
           done
           python tools/build_data.py --registry out
       - name: Publish to the data branch

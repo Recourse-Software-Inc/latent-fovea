@@ -12,6 +12,7 @@
     "serve": "python3 tools/serve.py",
     "check:gpt2": "node tools/check_forward.mjs",
     "check:mdlm": "node tools/check_mdlm.mjs",
-    "check:umap": "node tools/check_umap.mjs web/data/gpt2"
+    "check:umap": "node tools/check_umap.mjs web/data/gpt2",
+    "check:links": "node tools/check_links.mjs"
   }
 }

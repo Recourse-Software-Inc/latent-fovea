@@ -10,13 +10,14 @@ import { Decoder } from './decoder.js';
 import { GpuDecoder } from './gpu-decoder.js';
 import { saeFor, loadSae, encode, featureOver, decoderRow } from './sae.js';
 import { hiddenSpace } from './hidden.js';
+import { traceGraph } from './ngraph.js';
 
 let fwd = null;
 let md = null, ds = null;  // masked-diffusion model and its sampler state
 const post = (m, t) => self.postMessage(m, t || []);
 // Bump when a kernel's exports change: browsers cache .wasm for an hour, and new code must
 // never meet an old kernel.
-const KERNEL_V = 'gpu2';
+const KERNEL_V = 'nrn1';
 let saeId = null;  // the SAE set for this model, if there is one
 // Models whose weights are bigger than this are streamed from the browser's storage, one layer at
 // a time, instead of held in memory (wasm32 has 4 GB for everything).
@@ -24,6 +25,7 @@ const STREAM_OVER = 3.2e9;
 // Foveated readouts: every captured position's residual stream at every depth, and its row,
 // so any depth of any token can be read out, or attributed, later, when someone looks there.
 const resStore = [], rowStore = [];
+let ivSpec = {};  // the interventions in force, so a probe can lift and restore them
 let resA = null;  // a pinned reference run's residual streams, to compare the current run with
 let lastPos = -1;  // the position whose head and MLP outputs the kernel holds right now
 let hidAxes = null;  // the hidden-state space's last axes, so a refit keeps its orientation
@@ -140,11 +142,13 @@ async function handle({ data: m }) {
       saeId = saeFor(general ? manifest.arch : 'gpt2', fwd.L, fwd.C, ids.length);
       post({ type: 'ready', simd: fwd.simd, L: fwd.L, H: fwd.H, F: fwd.F, C: fwd.C, maxT: fwd.maxT, rowOf: fwd.rowOf, streaming: !!fwd.streaming, sae: saeId,
         backend: fwd.gpu ? 'gpu' : 'cpu', gpuName: fwd.gpuName || '', gpuNote, canGpu: general && !!(self.navigator && navigator.gpu),
-        q8: !!fwd.q8, qerr: fwd.quantError ? fwd.quantError() : null });
+        q8: !!fwd.q8, qerr: fwd.quantError ? fwd.quantError() : null,
+        caps: { links: !!(fwd.links && !fwd.streaming), pre: !!fwd.pre, act: fwd.act || 'gelu_tanh' } });
     } else if (m.type === 'step') {
       const t0 = performance.now();
       const general = !(fwd instanceof Forward);
       await fwd.step(m.row, m.pos, general ? undefined : m.lensMode);
+      if (m.pos === 0) { rowStore.length = 0; resStore.length = 0; }  // a new run: older, longer runs' rows and states are gone
       lastPos = m.pos; rowStore[m.pos] = m.row;
       const ms = performance.now() - t0;
       const L = fwd.L, H = fwd.H, n = m.pos + 1;
@@ -159,6 +163,11 @@ async function handle({ data: m }) {
         } else for (let d = 0; d <= L; d++) lens.push(want.has(d) ? await fwd.lens(d) : null);
       } else if (m.lensMode) for (let d = 0; d <= L; d++) lens.push(m.lensMode === 2 || d === L ? fwd.lens(d) : null);
       const headN = fwd.headNorms().slice(), mlp = fwd.mlp().slice();
+      // Each neuron's input before its activation function (and SwiGLU's value input): its
+      // negative pole and sign regimes. Kept for every token on models small enough; else the
+      // page keeps only the latest.
+      const preV = fwd.pre ? await fwd.pre() : null, preUV = fwd.preU ? await fwd.preU() : null;
+      const pre = preV ? preV.slice() : null, preU = preUV ? preUV.slice() : null;
       const vn = fwd.valueNorms(m.pos) || new Float32Array(0);  // what this token offers each head, for the flow view
       const res = new Float32Array(L + 1);  // residual stream norm at every depth
       const full = new Float32Array((L + 1) * fwd.C);
@@ -190,13 +199,14 @@ async function handle({ data: m }) {
       }
       // Interventions: the probability now given to the word the unchanged model wrote next.
       const watch = m.watch != null && lens[L] ? { row: m.watch, p: await fwd.probOf(m.watch) } : null;
-      post({ type: 'captured', id: m.id, pos: m.pos, row: m.row, ms, att, lens, headN, mlp, res, wr, vn, targets, attr, watch },
-        [att.buffer, headN.buffer, mlp.buffer, res.buffer, wr.buffer, vn.buffer, targets.buffer, attr.buffer]);
+      post({ type: 'captured', id: m.id, run: m.run, pos: m.pos, row: m.row, ms, att, lens, headN, mlp, pre, preU, res, wr, vn, targets, attr, watch },
+        [att.buffer, headN.buffer, mlp.buffer, res.buffer, wr.buffer, vn.buffer, targets.buffer, attr.buffer, ...(pre ? [pre.buffer] : []), ...(preU ? [preU.buffer] : [])]);
     } else if (m.type === 'gain') {  // per-neuron effect of layer l on word row (see neuronGain)
       const gain = fwd && await fwd.neuronGain(m.l, m.row);
       if (gain) post({ type: 'gain', l: m.l, row: m.row, gain }, [gain.buffer]);
     } else if (m.type === 'intervene') {  // knock out or scale heads, MLPs, neurons from the next step on
       if (fwd) fwd.setInterventions(m.spec);
+      ivSpec = m.spec || {};
       lastPos = -1;  // the kernel's held outputs are from the old model
     } else if (m.type === 'sae') {  // the features of one token's state at one depth
       const full = resStore[m.pos], C = fwd && fwd.C;
@@ -204,22 +214,24 @@ async function handle({ data: m }) {
       try {
         const sae = await loadSae(saeId, m.depth, (text) => post({ type: 'saeProgress', depth: m.depth, text }));
         const r = encode(sae, full.subarray(m.depth * C, (m.depth + 1) * C));
-        post({ type: 'sae', depth: m.depth, pos: m.pos, ...r });
+        post({ type: 'sae', run: m.run, depth: m.depth, pos: m.pos, ...r });
       } catch (e) { post({ type: 'saeProgress', depth: m.depth, text: `Could not load the features: ${e.message}` }); }
     } else if (m.type === 'saeFeat') {  // one feature: its activation at every token, and the words it writes
       const C = fwd && fwd.C;
       if (!saeId) return;
+      // this run's states, taken before waiting on the dictionary (a new run may start meanwhile)
+      const states = Array.from({ length: m.n }, (_, p) => resStore[p] && resStore[p].subarray(m.depth * C, (m.depth + 1) * C));
       let sae; try { sae = await loadSae(saeId, m.depth, (text) => post({ type: 'saeProgress', depth: m.depth, text })); } catch (e) { return; }
-      const acts = featureOver(sae, Array.from({ length: m.n }, (_, p) => resStore[p] && resStore[p].subarray(m.depth * C, (m.depth + 1) * C)), m.j);
+      const acts = featureOver(sae, states, m.j);
       const v = await fwd.vocabOf(decoderRow(sae, m.j));
-      post({ type: 'saeFeat', depth: m.depth, j: m.j, acts, ...(v || {}) }, [acts.buffer]);
+      post({ type: 'saeFeat', run: m.run, depth: m.depth, j: m.j, acts, ...(v || {}) }, [acts.buffer]);
     } else if (m.type === 'hidden') {  // every captured token's state at every depth, projected to 3-D
       let n = 0; while (n < m.n && resStore[n]) n++;
       if (!fwd || !n) return;
       if (m.fresh) hidAxes = null;
       const t0 = performance.now(), h = hiddenSpace(resStore, n, fwd.L, fwd.C, hidAxes);
       hidAxes = h.axes;
-      post({ type: 'hidden', id: m.id, n, xyz: h.xyz, share: h.share, ms: performance.now() - t0 }, [h.xyz.buffer]);
+      post({ type: 'hidden', run: m.run, id: m.id, n, xyz: h.xyz, share: h.share, ms: performance.now() - t0 }, [h.xyz.buffer]);
     } else if (m.type === 'pinA') {  // keep this run's residual streams as the reference (later runs store new arrays)
       resA = m.clear ? null : resStore.slice();
     } else if (m.type === 'diff') {  // how far this run's state has moved from the reference's, at every depth
@@ -231,11 +243,11 @@ async function handle({ data: m }) {
         for (let i = k * C; i < (k + 1) * C; i++) { ab += a[i] * b[i]; aa += a[i] * a[i]; bb += b[i] * b[i]; }
         d[k] = Math.max(0, 1 - ab / Math.sqrt(aa * bb || 1));  // cosine distance: 0 = the same direction
       }
-      post({ type: 'diff', pos: m.pos, d }, [d.buffer]);
+      post({ type: 'diff', run: m.run, pos: m.pos, d }, [d.buffer]);
     } else if (m.type === 'lens') {  // the logit lens at any depth of any captured token
       const full = resStore[m.pos], C = fwd && fwd.C;
       const lz = full && await fwd.lensOf(full.subarray(m.depth * C, (m.depth + 1) * C));
-      if (lz) post({ type: 'lens', pos: m.pos, depth: m.depth, lens: lz });
+      if (lz) post({ type: 'lens', run: m.run, pos: m.pos, depth: m.depth, lens: lz });
     } else if (m.type === 'attr') {  // attribution toward any word at any captured token
       if (!fwd || rowStore[m.pos] == null) return;
       if (lastPos !== m.pos) { await fwd.step(rowStore[m.pos], m.pos, 0); lastPos = m.pos; }  // replays that position exactly
@@ -243,7 +255,46 @@ async function handle({ data: m }) {
       const L = fwd.L, H = fwd.H, rec = new Float32Array(L * H + L + 4);
       rec.set(a.heads); rec.set(a.mlps, L * H);
       rec[L * H + L] = a.emb; rec[L * H + L + 1] = a.rest; rec[L * H + L + 2] = a.logit; rec[L * H + L + 3] = a.inv;
-      post({ type: 'attr', pos: m.pos, row: m.row, rec }, [rec.buffer]);
+      post({ type: 'attr', run: m.run, pos: m.pos, row: m.row, rec }, [rec.buffer]);
+    } else if (m.type === 'links') {  // into neuron j of layer l at token pos: each earlier part's share
+      if (!fwd || rowStore[m.pos] == null) return;
+      if (!fwd.links) { post({ type: 'links', run: m.run, l: m.l, j: m.j, pos: m.pos, none: 'Run the model on the CPU to see what feeds a neuron.' }); return; }
+      if (lastPos !== m.pos) { await fwd.step(rowStore[m.pos], m.pos, 0); lastPos = m.pos; }
+      const lk = fwd.links(m.l, m.j, true);
+      if (!lk) { post({ type: 'links', run: m.run, l: m.l, j: m.j, pos: m.pos, none: 'Not available while the weights are streamed.' }); return; }
+      post({ type: 'links', run: m.run, l: m.l, j: m.j, pos: m.pos, neurons: lk.neurons, heads: lk.heads, emb: lk.emb, total: lk.total, r: lk.r,
+        up: lk.up ? { neurons: lk.up.neurons, heads: lk.up.heads, emb: lk.up.emb, total: lk.up.total } : null, act: fwd.act });
+    } else if (m.type === 'readers') {  // which later neurons read neuron i of layer l (weights)
+      if (!fwd || !fwd.readers) { post({ type: 'readers', run: m.run, l: m.l, i: m.i, pos: m.pos, none: true }); return; }
+      if (rowStore[m.pos] == null) return;
+      if (lastPos !== m.pos) { await fwd.step(rowStore[m.pos], m.pos, 0); lastPos = m.pos; }
+      const rd = fwd.readers(m.l, m.i), r = fwd.ln2r ? fwd.ln2r() : null, F = fwd.F;
+      // weights alone overrate late readers, whose norms divide their input by more: scale each
+      // reader by its layer's 1/scale at this token, so readers in different layers compare
+      if (rd && r) for (const arr of [rd.into, rd.intoUp]) if (arr) for (let k = 0; k < fwd.L; k++) for (let j = 0; j < F; j++) arr[k * F + j] *= r[k];
+      post({ type: 'readers', run: m.run, l: m.l, i: m.i, pos: m.pos, into: rd ? rd.into : null, intoUp: rd ? rd.intoUp : null, scaled: !!r, none: !rd });
+    } else if (m.type === 'graph') {  // the neurons behind one word at one token, and how they feed each other
+      if (!fwd || rowStore[m.pos] == null) return;
+      if (!fwd.links) { post({ type: 'graph', pos: m.pos, row: m.row, runId: m.runId, ivVer: m.ivVer, error: 'Tracing needs the CPU kernel: choose CPU under Run on.' }); return; }
+      if (lastPos !== m.pos) { await fwd.step(rowStore[m.pos], m.pos, 2); lastPos = m.pos; }
+      const g = await traceGraph(fwd, m.row, { spec: ivSpec, onProgress: (k, n) => post({ type: 'graphProgress', k, n, runId: m.runId }) });
+      post({ type: 'graph', pos: m.pos, row: m.row, runId: m.runId, ivVer: m.ivVer, ...g });
+    } else if (m.type === 'probe') {  // a neuron on a text of the reader's own: its activation at every token
+      if (!fwd || !fwd.pre) return;
+      // The probe reads the unchanged model: interventions are lifted while it runs, then restored.
+      const F = fwd.F, idx = m.l * F + m.i, acts = [], pres = [], preUs = [], lead = m.lead || 0;
+      fwd.setInterventions({});
+      for (let p = 0; p < m.rows.length && p < fwd.maxT; p++) {
+        await fwd.step(m.rows[p], p, 0);
+        if (p < lead) continue;  // a leading <|endoftext|>: the position the model parks attention on
+        acts.push(fwd.mlp()[idx]); pres.push(fwd.pre()[idx]); const u = fwd.preU && fwd.preU(); preUs.push(u ? u[idx] : null);
+      }
+      fwd.setInterventions(ivSpec);
+      // put the run on screen back: the cache now holds the probe's tokens (every position this
+      // worker has run, even ones the page hasn't heard about yet)
+      for (let p = 0; p < rowStore.length; p++) if (rowStore[p] != null) await fwd.step(rowStore[p], p, 0);
+      lastPos = rowStore.length - 1;
+      post({ type: 'probe', l: m.l, i: m.i, id: m.id, rows: m.rows.slice(lead), acts, pres, preUs, kind: m.kind || 'test', key: m.key });
     } else if (m.type === 'nvocab') {  // the words neuron i of layer l pushes up and down
       const v = fwd && await fwd.neuronVocab(m.l, m.i);
       if (v) post({ type: 'nvocab', l: m.l, i: m.i, ...v });
@@ -255,6 +306,6 @@ async function handle({ data: m }) {
       if (ds && m.snapId === ds.snapId) post({ type: 'dlens', p: m.p, snapId: m.snapId, lens: md.lens(m.p) });
     }
   } catch (err) {
-    post({ type: 'error', message: err.message, id: m.id });
+    post({ type: 'error', run: m.run, message: err.message, id: m.id });
   }
 }
