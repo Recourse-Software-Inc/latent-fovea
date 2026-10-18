@@ -70,5 +70,6 @@
     "meta.json"
   ],
   "forward": "model/manifest.json",
-  "built_at": "2026-09-24T02:30:26Z"
+  "built_at": "2026-09-24T02:30:26Z",
+  "neuron_book": "neurons/meta.json"
 }
