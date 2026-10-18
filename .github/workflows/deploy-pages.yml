@@ -49,7 +49,7 @@ jobs:
       - name: Stage the site (files split to fit the 25 MiB limit)
         if: steps.creds.outputs.ok == 'true'
         run: python tools/stage_static.py site
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.creds.outputs.ok == 'true'
         with:
           node-version: "22"
